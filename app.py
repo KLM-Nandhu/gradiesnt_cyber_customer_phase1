@@ -64,37 +64,26 @@ def process_and_upsert_pdf(pdf_file):
     text = extract_text_from_pdf(pdf_file)
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
     chunks = text_splitter.split_text(text)
+    
     doc_id = str(uuid.uuid4())
     metadatas = [{"source": pdf_file.name, "doc_id": doc_id} for _ in chunks]
+    
     vectorstore.add_texts(chunks, metadatas=metadatas)
+    
     if "doc_ids" not in st.session_state:
         st.session_state.doc_ids = []
     st.session_state.doc_ids.append(doc_id)
+    
     return len(chunks)
 
 # Custom CSS for boxes
-st.markdown("""
-<style>
-    .response-box {
-        border: 2px solid #4CAF50;
-        border-radius: 10px;
-        padding: 20px;
-        margin: 10px 0;
-    }
-    .history-box {
-        border: 2px solid #2196F3;
-        border-radius: 10px;
-        padding: 10px;
-        margin: 10px 0;
-        max-height: 300px;
-        overflow-y: auto;
-    }
-</style>
-""", unsafe_allow_html=True)
+
 
 # Initialize session state
 if "messages" not in st.session_state:
     st.session_state.messages = []
+if "show_history" not in st.session_state:
+    st.session_state.show_history = False
 
 # Sidebar
 with st.sidebar:
@@ -110,15 +99,17 @@ with st.sidebar:
                 st.success(f"Processed and upserted {num_chunks} chunks to Pinecone.")
     
     st.header("Controls")
+    if st.button("Toggle Conversation History"):
+        st.session_state.show_history = not st.session_state.show_history
+    
     if st.button("Clear History"):
         st.session_state.messages = []
         if "doc_ids" in st.session_state:
             st.session_state.doc_ids = []
         st.success("Conversation history and document references cleared.")
     
-    # Conversation History in Sidebar
-    st.header("Conversation History")
-    with st.container():
+    if st.session_state.show_history:
+        st.subheader("Conversation History")
         st.markdown('<div class="history-box">', unsafe_allow_html=True)
         for message in st.session_state.messages:
             st.markdown(f"**{message['role'].capitalize()}:** {message['content']}")
@@ -130,34 +121,39 @@ st.title("Gradient Cyber Q&A System")
 # Response Box (will be populated when there's a response)
 response_container = st.container()
 
-# Query Input
-query = st.text_input("Ask a question about the uploaded documents:")
-if st.button("Send"):
-    if query:
-        st.session_state.messages.append({"role": "human", "content": query})
+query = st.chat_input("Ask a question about the uploaded documents:")
+if query:
+    st.session_state.messages.append({"role": "human", "content": query})
+    with st.chat_message("human"):
+        st.markdown(query)
+    
+    with st.chat_message("assistant"):
+        message_placeholder = st.empty()
+        full_response = ""
         
-        with st.spinner("Generating response..."):
-            memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
-            retriever = vectorstore.as_retriever()
-            if "doc_ids" in st.session_state and st.session_state.doc_ids:
-                retriever = vectorstore.as_retriever(
-                    search_kwargs={
-                        "filter": {"doc_id": {"$in": st.session_state.doc_ids}}
-                    }
-                )
-            qa_chain = ConversationalRetrievalChain.from_llm(
-                llm=llm,
-                retriever=retriever,
-                memory=memory,
-                callback_manager=callback_manager
+        memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+        retriever = vectorstore.as_retriever()
+        if "doc_ids" in st.session_state and st.session_state.doc_ids:
+            retriever = vectorstore.as_retriever(
+                search_kwargs={
+                    "filter": {"doc_id": {"$in": st.session_state.doc_ids}}
+                }
             )
-            result = qa_chain({"question": query, "chat_history": [(msg["role"], msg["content"]) for msg in st.session_state.messages]})
-            response = result["answer"]
-            
-            st.session_state.messages.append({"role": "assistant", "content": response})
-            
-            # Display response in the response box
-            with response_container:
-                st.markdown('<div class="response-box">', unsafe_allow_html=True)
-                st.markdown(f"**Assistant:** {response}")
-                st.markdown('</div>', unsafe_allow_html=True)
+        qa_chain = ConversationalRetrievalChain.from_llm(
+            llm=llm,
+            retriever=retriever,
+            memory=memory,
+            callback_manager=callback_manager
+        )
+        result = qa_chain({"question": query, "chat_history": [(msg["role"], msg["content"]) for msg in st.session_state.messages]})
+        full_response = result["answer"]
+        
+        # Display response in the center box
+        with response_container:
+            st.markdown('<div class="response-box">', unsafe_allow_html=True)
+            st.markdown(f"**Assistant:** {full_response}")
+            st.markdown('</div>', unsafe_allow_html=True)
+        
+        message_placeholder.markdown(full_response)
+    
+    st.session_state.messages.append({"role": "assistant", "content": full_response})
