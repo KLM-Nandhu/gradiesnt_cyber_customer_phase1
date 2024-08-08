@@ -12,8 +12,6 @@ import os
 from langsmith import Client
 from dotenv import load_dotenv
 import uuid
-import json
-from datetime import datetime
 
 # Load environment variables
 load_dotenv()
@@ -51,7 +49,7 @@ tracer = LangChainTracer(project_name="gradient_cyber_customer_bot", client=clie
 callback_manager = CallbackManager([tracer])
 llm = ChatOpenAI(
     openai_api_key=OPENAI_API_KEY,
-    model_name="gpt-4o",
+    model_name="gpt-4",
     temperature=0,
     callback_manager=callback_manager
 )
@@ -83,16 +81,6 @@ def process_and_upsert_pdf(pdf_file):
     
     return len(chunks)
 
-def save_conversation():
-    if st.session_state.messages:
-        conversation = {
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "messages": st.session_state.messages
-        }
-        json_string = json.dumps(conversation, indent=2)
-        return json_string
-    return None
-
 # Streamlit UI
 st.title("Gradient Cyber Q&A System")
 
@@ -120,34 +108,32 @@ with st.sidebar:
                 st.success(f"Processed and upserted {num_chunks} chunks to Pinecone.")
 
     st.title("Conversation History")
+    if st.button("Show Conversation History", key="show_history"):
+        st.session_state.show_history = True
+    
     if st.button("Clear History", key="clear_history"):
         st.session_state.messages = []
         if "doc_ids" in st.session_state:
             st.session_state.doc_ids = []
         st.success("Conversation history and document references cleared.")
-
-    if st.button("Save Conversation", key="save_conversation"):
-        conversation_json = save_conversation()
-        if conversation_json:
-            st.download_button(
-                label="Download Conversation",
-                data=conversation_json,
-                file_name=f"conversation_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                mime="application/json",
-                key="download_conversation"
-            )
-            st.success("Conversation saved. Click the download button to get the file.")
-        else:
-            st.warning("No conversation to save.")
+        st.session_state.show_history = False
 
 # Initialize session state for chat history
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
+if "show_history" not in st.session_state:
+    st.session_state.show_history = False
+
 # Display chat messages
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+if st.session_state.show_history:
+    st.subheader("Conversation History")
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+    if st.button("Hide Conversation History", key="hide_history"):
+        st.session_state.show_history = False
+        st.experimental_rerun()
 
 # Q&A section
 query = st.chat_input("Ask a question about the uploaded documents:")
