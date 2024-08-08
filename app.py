@@ -48,7 +48,7 @@ tracer = LangChainTracer(project_name="gradient_cyber_customer_bot", client=clie
 callback_manager = CallbackManager([tracer])
 llm = ChatOpenAI(
     openai_api_key=OPENAI_API_KEY,
-    model_name="gpt-4o",
+    model_name="gpt-4",
     temperature=0,
     callback_manager=callback_manager
 )
@@ -95,6 +95,11 @@ st.markdown("""
             text-align: center;
             margin-bottom: 20px;
         }
+        .conversation-history {
+            background-color: #f8f8f8;
+            padding: 10px;
+            border-radius: 5px;
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -129,7 +134,7 @@ with st.sidebar:
     
     if st.session_state.show_history:
         st.subheader("Conversation History")
-        st.markdown('<div class="history-box">', unsafe_allow_html=True)
+        st.markdown('<div class="conversation-history">', unsafe_allow_html=True)
         for message in st.session_state.messages:
             st.markdown(f"**{message['role'].capitalize()}:** {message['content']}")
         st.markdown('</div>', unsafe_allow_html=True)
@@ -146,33 +151,27 @@ if query:
     with st.chat_message("human"):
         st.markdown(query)
     
-    with st.chat_message("assistant"):
-        message_placeholder = st.empty()
-        full_response = ""
-        
-        memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
-        retriever = vectorstore.as_retriever()
-        if "doc_ids" in st.session_state and st.session_state.doc_ids:
-            retriever = vectorstore.as_retriever(
-                search_kwargs={
-                    "filter": {"doc_id": {"$in": st.session_state.doc_ids}}
-                }
-            )
-        qa_chain = ConversationalRetrievalChain.from_llm(
-            llm=llm,
-            retriever=retriever,
-            memory=memory,
-            callback_manager=callback_manager
+    memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+    retriever = vectorstore.as_retriever()
+    if "doc_ids" in st.session_state and st.session_state.doc_ids:
+        retriever = vectorstore.as_retriever(
+            search_kwargs={
+                "filter": {"doc_id": {"$in": st.session_state.doc_ids}}
+            }
         )
-        result = qa_chain({"question": query, "chat_history": [(msg["role"], msg["content"]) for msg in st.session_state.messages]})
-        full_response = result["answer"]
-        
-        # Display response in the center box
-        with response_container:
-            st.markdown('<div class="response-box">', unsafe_allow_html=True)
-            st.markdown(f"**Assistant:** {full_response}")
-            st.markdown('</div>', unsafe_allow_html=True)
-        
-        message_placeholder.markdown(full_response)
+    qa_chain = ConversationalRetrievalChain.from_llm(
+        llm=llm,
+        retriever=retriever,
+        memory=memory,
+        callback_manager=callback_manager
+    )
+    result = qa_chain({"question": query, "chat_history": [(msg["role"], msg["content"]) for msg in st.session_state.messages]})
+    full_response = result["answer"]
+    
+    # Display response in the center box
+    with response_container:
+        st.markdown('<div class="response-box">', unsafe_allow_html=True)
+        st.markdown(f"**Assistant:** {full_response}")
+        st.markdown('</div>', unsafe_allow_html=True)
     
     st.session_state.messages.append({"role": "assistant", "content": full_response})
