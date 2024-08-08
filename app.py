@@ -2,8 +2,6 @@ import streamlit as st
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_pinecone import PineconeVectorStore
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.chains import ConversationalRetrievalChain
-from langchain.memory import ConversationBufferMemory
 from langchain.callbacks.tracers import LangChainTracer
 from langchain.callbacks.manager import CallbackManager
 from pinecone import Pinecone
@@ -49,7 +47,7 @@ tracer = LangChainTracer(project_name="gradient_cyber_customer_bot", client=clie
 callback_manager = CallbackManager([tracer])
 llm = ChatOpenAI(
     openai_api_key=OPENAI_API_KEY,
-    model_name="gpt-4",
+    model_name="gpt-4o",
     temperature=0,
     callback_manager=callback_manager
 )
@@ -77,6 +75,31 @@ def process_and_upsert_pdf(pdf_file):
     
     return len(chunks)
 
+def get_relevant_documents(query, retriever):
+    docs = retriever.get_relevant_documents(query)
+    return docs
+
+def generate_response(query, relevant_docs):
+    if not relevant_docs:
+        return None
+    
+    context = "\n".join([doc.page_content for doc in relevant_docs])
+    prompt = f"""
+    Based solely on the following context, answer the question. If the answer cannot be found in the context, say "I don't have enough information to answer that question."
+
+    Context: {context}
+
+    Question: {query}
+
+    Answer:
+    """
+    
+    response = llm.predict(prompt)
+    return response
+
+# Streamlit UI
+st.title("Gradient Cyber Q&A System")
+
 # Initialize session state
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -97,7 +120,7 @@ with st.sidebar:
                 st.success(f"Processed and upserted {num_chunks} chunks to Pinecone.")
     
     st.header("Controls")
-    if st.button("Toggle Conversation History"):
+    if st.button("Conversation History"):
         st.session_state.show_history = not st.session_state.show_history
     
     if st.button("Clear History"):
@@ -108,12 +131,13 @@ with st.sidebar:
     
     if st.session_state.show_history:
         st.subheader("Conversation History")
-        for message in st.session_state.messages:
-            st.text(f"{message['role']}: {message['content'][:50]}...")
+        for i, message in enumerate(st.session_state.messages):
+            with st.container():
+                st.markdown(f"**{message['role'].capitalize()}:**")
+                st.text_area(f"Message {i+1}", value=message['content'], height=100, disabled=True)
+                st.markdown("---")
 
 # Main content area
-st.title("Gradient Cyber Q&A System")
-
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
@@ -126,29 +150,26 @@ if query:
     
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
-        full_response = ""
         
-        memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
-        retriever = vectorstore.as_retriever()
+        retriever = vectorstore.as_retriever(search_kwargs={"k": 3})  # Adjust k as needed
         
         if "doc_ids" in st.session_state and st.session_state.doc_ids:
             retriever = vectorstore.as_retriever(
                 search_kwargs={
-                    "filter": {"doc_id": {"$in": st.session_state.doc_ids}}
+                    "filter": {"doc_id": {"$in": st.session_state.doc_ids}},
+                    "k": 3
                 }
             )
         
-        qa_chain = ConversationalRetrievalChain.from_llm(
-            llm=llm,
-            retriever=retriever,
-            memory=memory,
-            callback_manager=callback_manager
-        )
+        relevant_docs = get_relevant_documents(query, retriever)
         
-        result = qa_chain({"question": query, "chat_history": [(msg["role"], msg["content"]) for msg in st.session_state.messages]})
-        full_response = result["answer"]
-        message_placeholder.markdown(full_response)
+        if not relevant_docs:
+            response = "I'm sorry, but I don't have enough information in the database to answer that question."
+            message_placeholder.warning(response)
+        else:
+            response = generate_response(query, relevant_docs)
+            message_placeholder.markdown(response)
     
-    st.session_state.messages.append({"role": "assistant", "content": full_response})
+    st.session_state.messages.append({"role": "assistant", "content": response})
 
 st.write("Note: Make sure you have set up your Pinecone index and OpenAI API key correctly.")
