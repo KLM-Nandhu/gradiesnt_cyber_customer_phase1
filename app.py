@@ -66,15 +66,11 @@ def process_and_upsert_pdf(pdf_file):
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
     chunks = text_splitter.split_text(text)
     
-    # Generate a unique ID for this document
     doc_id = str(uuid.uuid4())
-    
-    # Add the doc_id to the metadata of each chunk
     metadatas = [{"source": pdf_file.name, "doc_id": doc_id} for _ in chunks]
     
     vectorstore.add_texts(chunks, metadatas=metadatas)
     
-    # Store the doc_id in session state
     if "doc_ids" not in st.session_state:
         st.session_state.doc_ids = []
     st.session_state.doc_ids.append(doc_id)
@@ -82,96 +78,81 @@ def process_and_upsert_pdf(pdf_file):
     return len(chunks)
 
 # Streamlit UI
-st.title("Gradient Cyber")
+st.title("Gradient Cyber Q&A System")
 
-# Sidebar
+# Initialize session state
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+if "show_history" not in st.session_state:
+    st.session_state.show_history = False
+
+# Sidebar for PDF upload
 with st.sidebar:
-    st.markdown("""
-        <style>
-        .big-font {
-            font-size:30px !important;
-            font-weight: bold;
-            color: #008080;
-        }
-        </style>
-        <p class="big-font">Gradient Cyber</p>
-        """, unsafe_allow_html=True)
-    
-    st.title("PDF Uploader")
-
-    uploaded_file = st.file_uploader("Choose a PDF file", type="pdf", key="pdf_uploader")
-    if uploaded_file is not None:
+    st.header("PDF Uploader")
+    uploaded_file = st.file_uploader("Choose a PDF file", type="pdf")
+    if uploaded_file:
         st.write("File uploaded successfully!")
-        if st.button("Process and Upsert to Pinecone", key="process_button"):
+        if st.button("Process and Upsert to Pinecone"):
             with st.spinner("Processing PDF and upserting to Pinecone..."):
                 num_chunks = process_and_upsert_pdf(uploaded_file)
                 st.success(f"Processed and upserted {num_chunks} chunks to Pinecone.")
 
-    st.title("Conversation History")
-    if st.button("Show Conversation History", key="show_history"):
-        st.session_state.show_history = True
+# Main content area
+col1, col2 = st.columns([3, 1])
+
+with col1:
+    st.subheader("Chat")
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    query = st.chat_input("Ask a question about the uploaded documents:")
+    if query:
+        st.session_state.messages.append({"role": "human", "content": query})
+        with st.chat_message("human"):
+            st.markdown(query)
+        
+        with st.chat_message("assistant"):
+            message_placeholder = st.empty()
+            full_response = ""
+            
+            memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+            retriever = vectorstore.as_retriever()
+            
+            if "doc_ids" in st.session_state and st.session_state.doc_ids:
+                retriever = vectorstore.as_retriever(
+                    search_kwargs={
+                        "filter": {"doc_id": {"$in": st.session_state.doc_ids}}
+                    }
+                )
+            
+            qa_chain = ConversationalRetrievalChain.from_llm(
+                llm=llm,
+                retriever=retriever,
+                memory=memory,
+                callback_manager=callback_manager
+            )
+            
+            result = qa_chain({"question": query, "chat_history": [(msg["role"], msg["content"]) for msg in st.session_state.messages]})
+            full_response = result["answer"]
+            message_placeholder.markdown(full_response)
+        
+        st.session_state.messages.append({"role": "assistant", "content": full_response})
+
+with col2:
+    st.subheader("Controls")
+    if st.button("Toggle Conversation History"):
+        st.session_state.show_history = not st.session_state.show_history
     
-    if st.button("Clear History", key="clear_history"):
+    if st.button("Clear History"):
         st.session_state.messages = []
         if "doc_ids" in st.session_state:
             st.session_state.doc_ids = []
         st.success("Conversation history and document references cleared.")
-        st.session_state.show_history = False
 
-# Initialize session state for chat history
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
-if "show_history" not in st.session_state:
-    st.session_state.show_history = False
-
-# Display chat messages
 if st.session_state.show_history:
     st.subheader("Conversation History")
     for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
-    if st.button("Hide Conversation History", key="hide_history"):
-        st.session_state.show_history = False
-        st.experimental_rerun()
-
-# Q&A section
-query = st.chat_input("Ask a question about the uploaded documents:")
-if query:
-    st.session_state.messages.append({"role": "human", "content": query})
-    with st.chat_message("human"):
-        st.markdown(query)
-    
-    with st.chat_message("assistant"):
-        message_placeholder = st.empty()
-        full_response = ""
-        
-        # Create a ConversationalRetrievalChain with a filtered retriever
-        memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
-        
-        # Create a filtered retriever
-        retriever = vectorstore.as_retriever()
-        
-        # Filter the retriever to only search documents with the stored doc_ids
-        if "doc_ids" in st.session_state and st.session_state.doc_ids:
-            retriever = vectorstore.as_retriever(
-                search_kwargs={
-                    "filter": {"doc_id": {"$in": st.session_state.doc_ids}}
-                }
-            )
-        
-        qa_chain = ConversationalRetrievalChain.from_llm(
-            llm=llm,
-            retriever=retriever,
-            memory=memory,
-            callback_manager=callback_manager
-        )
-        
-        # Generate the response
-        result = qa_chain({"question": query, "chat_history": [(msg["role"], msg["content"]) for msg in st.session_state.messages]})
-        full_response = result["answer"]
-        message_placeholder.markdown(full_response)
-    
-    st.session_state.messages.append({"role": "assistant", "content": full_response})
+        st.text(f"{message['role']}: {message['content']}")
 
 st.write("Note: Make sure you have set up your Pinecone index and OpenAI API key correctly.")
