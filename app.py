@@ -48,7 +48,7 @@ tracer = LangChainTracer(project_name="gradient_cyber_customer_bot", client=clie
 callback_manager = CallbackManager([tracer])
 llm = ChatOpenAI(
     openai_api_key=OPENAI_API_KEY,
-    model_name="gpt-4",
+    model_name="gpt-4o",
     temperature=0,
     callback_manager=callback_manager
 )
@@ -66,7 +66,7 @@ def process_and_upsert_pdf(pdf_file):
     chunks = text_splitter.split_text(text)
     
     doc_id = str(uuid.uuid4())
-    metadatas = [{"source": pdf_file.name, "doc_id": doc_id} for _ in chunks]
+    metadatas = [{"source": pdf_file.name, "doc_id": doc_id, "chunk_index": i} for i, _ in enumerate(chunks)]
     
     vectorstore.add_texts(chunks, metadatas=metadatas)
     
@@ -76,7 +76,46 @@ def process_and_upsert_pdf(pdf_file):
     
     return len(chunks)
 
-
+# Custom CSS for chat layout
+st.markdown("""
+    <style>
+        .chat-box {
+            display: flex;
+            align-items: flex-start;
+            margin: 10px 0;
+        }
+        .chat-box.user {
+            justify-content: flex-start;
+        }
+        .chat-box.assistant {
+            justify-content: flex-end;
+        }
+        .chat-message {
+            max-width: 70%;
+            padding: 10px;
+            border-radius: 10px;
+            margin: 5px;
+        }
+        .chat-message.user {
+            background-color: #e6f7ff;
+            text-align: left;
+        }
+        .chat-message.assistant {
+            background-color: #f0f0f0;
+            text-align: right;
+        }
+        .title {
+            color: #003366;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .conversation-history {
+            background-color: #f8f8f8;
+            padding: 10px;
+            border-radius: 5px;
+        }
+    </style>
+""", unsafe_allow_html=True)
 
 # Initialize session state
 if "messages" not in st.session_state:
@@ -141,16 +180,20 @@ if query:
     result = qa_chain({"question": query, "chat_history": [(msg["role"], msg["content"]) for msg in st.session_state.messages]})
     full_response = result["answer"]
     
-    st.session_state.messages.append({"role": "assistant", "content": full_response})
+    # Get the metadata of the matched chunk
+    matched_metadata = result['source_documents'][0].metadata
+    chunk_info = f"Source: {matched_metadata['source']}, Chunk Index: {matched_metadata['chunk_index']}"
+
+    st.session_state.messages.append({"role": "assistant", "content": full_response, "chunk_info": chunk_info})
 
     # Display response in the center box
     with response_container:
         for message in st.session_state.messages:
             if message["role"] == "human":
-                st.markdown('<div class="response-box">', unsafe_allow_html=True)
-                st.markdown(f"👤 **:** {message['content']}")
+                st.markdown('<div class="chat-box user">', unsafe_allow_html=True)
+                st.markdown(f'<div class="chat-message user">👤 {message["content"]}</div>', unsafe_allow_html=True)
                 st.markdown('</div>', unsafe_allow_html=True)
             else:
-                st.markdown('<div class="response-box">', unsafe_allow_html=True)
-                st.markdown(f"🤖 **:** {message['content']}")
+                st.markdown('<div class="chat-box assistant">', unsafe_allow_html=True)
+                st.markdown(f'<div class="chat-message assistant">🤖 {message["content"]}<br><small>{message["chunk_info"]}</small></div>', unsafe_allow_html=True)
                 st.markdown('</div>', unsafe_allow_html=True)
