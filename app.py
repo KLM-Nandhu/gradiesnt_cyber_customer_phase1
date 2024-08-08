@@ -47,7 +47,7 @@ tracer = LangChainTracer(project_name="gradient_cyber_customer_bot", client=clie
 callback_manager = CallbackManager([tracer])
 llm = ChatOpenAI(
     openai_api_key=OPENAI_API_KEY,
-    model_name="gpt-4",
+    model_name="gpt-4o",
     temperature=0,
     callback_manager=callback_manager
 )
@@ -121,7 +121,7 @@ with st.sidebar:
                 st.success(f"Processed and upserted {num_chunks} chunks to Pinecone.")
     
     st.header("Controls")
-    if st.button("Toggle Conversation History"):
+    if st.button("Conversation History"):
         st.session_state.show_history = not st.session_state.show_history
     
     if st.button("Clear History"):
