@@ -103,34 +103,10 @@ st.title("Gradient Cyber Q&A System")
 # Initialize session state
 if "messages" not in st.session_state:
     st.session_state.messages = []
-
-# Sidebar
-with st.sidebar:
-    st.title("Gradient Cyber")
-    
-    st.header("PDF Uploader")
-    uploaded_file = st.file_uploader("Choose a PDF file", type="pdf")
-    if uploaded_file:
-        st.write("File uploaded successfully!")
-        if st.button("Process and Upsert to Pinecone"):
-            with st.spinner("Processing PDF and upserting to Pinecone..."):
-                num_chunks = process_and_upsert_pdf(uploaded_file)
-                st.success(f"Processed and upserted {num_chunks} chunks to Pinecone.")
-    
-    if st.button("Clear History"):
-        st.session_state.messages = []
-        if "doc_ids" in st.session_state:
-            st.session_state.doc_ids = []
-        st.success("Conversation history and document references cleared.")
+if "show_history" not in st.session_state:
+    st.session_state.show_history = False
 
 # Main content area
-st.subheader("Conversation")
-chat_container = st.container()
-
-with chat_container:
-    for message in st.session_state.messages:
-        st.write(f"**{message['role'].capitalize()}:** {message['content']}")
-
 query = st.text_input("Ask a question about the uploaded documents:")
 if st.button("Send"):
     if query:
@@ -156,10 +132,32 @@ if st.button("Send"):
             st.write(f"**Assistant:** {response}")
         
         st.session_state.messages.append({"role": "assistant", "content": response})
-        
-        # Refresh the chat container to show the updated conversation
-        with chat_container:
-            for message in st.session_state.messages:
-                st.write(f"**{message['role'].capitalize()}:** {message['content']}")
+
+# Sidebar
+with st.sidebar:
+    st.title("Gradient Cyber")
+    
+    st.header("PDF Uploader")
+    uploaded_file = st.file_uploader("Choose a PDF file", type="pdf")
+    if uploaded_file:
+        st.write("File uploaded successfully!")
+        if st.button("Process and Upsert to Pinecone"):
+            with st.spinner("Processing PDF and upserting to Pinecone..."):
+                num_chunks = process_and_upsert_pdf(uploaded_file)
+                st.success(f"Processed and upserted {num_chunks} chunks to Pinecone.")
+    
+    st.header("Conversation History")
+    if st.button("Toggle Conversation History"):
+        st.session_state.show_history = not st.session_state.show_history
+    
+    if st.button("Clear History"):
+        st.session_state.messages = []
+        if "doc_ids" in st.session_state:
+            st.session_state.doc_ids = []
+        st.success("Conversation history and document references cleared.")
+    
+    if st.session_state.show_history:
+        for message in st.session_state.messages:
+            st.write(f"**{message['role'].capitalize()}:** {message['content']}")
 
 st.write("Note: Make sure you have set up your Pinecone index and OpenAI API key correctly.")
