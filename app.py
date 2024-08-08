@@ -47,7 +47,7 @@ tracer = LangChainTracer(project_name="gradient_cyber_customer_bot", client=clie
 callback_manager = CallbackManager([tracer])
 llm = ChatOpenAI(
     openai_api_key=OPENAI_API_KEY,
-    model_name="gpt-4o",
+    model_name="gpt-4",
     temperature=0,
     callback_manager=callback_manager
 )
@@ -81,9 +81,11 @@ def get_relevant_documents(query, retriever):
 
 def generate_response(query, relevant_docs):
     if not relevant_docs:
-        return None
+        return None, []
     
     context = "\n".join([doc.page_content for doc in relevant_docs])
+    sources = [f"{doc.metadata['source']} (Doc ID: {doc.metadata['doc_id']})" for doc in relevant_docs]
+    
     prompt = f"""
     Based solely on the following context, answer the question. If the answer cannot be found in the context, say "I don't have enough information to answer that question."
 
@@ -95,7 +97,7 @@ def generate_response(query, relevant_docs):
     """
     
     response = llm.predict(prompt)
-    return response
+    return response, sources
 
 # Streamlit UI
 st.title("Gradient Cyber Q&A System")
@@ -120,7 +122,7 @@ with st.sidebar:
                 st.success(f"Processed and upserted {num_chunks} chunks to Pinecone.")
     
     st.header("Controls")
-    if st.button("Conversation History"):
+    if st.button("Toggle Conversation History"):
         st.session_state.show_history = not st.session_state.show_history
     
     if st.button("Clear History"):
@@ -132,15 +134,17 @@ with st.sidebar:
     if st.session_state.show_history:
         st.subheader("Conversation History")
         for i, message in enumerate(st.session_state.messages):
-            with st.container():
-                st.markdown(f"**{message['role'].capitalize()}:**")
-                st.text_area(f"Message {i+1}", value=message['content'], height=100, disabled=True)
-                st.markdown("---")
+            with st.sidebar.expander(f"{message['role'].capitalize()} - Message {i+1}"):
+                st.write(message['content'])
+                if "sources" in message:
+                    st.info("Sources: " + ", ".join(message["sources"]))
 
 # Main content area
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
+        if "sources" in message:
+            st.info("Sources: " + ", ".join(message["sources"]))
 
 query = st.chat_input("Ask a question about the uploaded documents:")
 if query:
@@ -150,6 +154,7 @@ if query:
     
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
+        sources_placeholder = st.empty()
         
         retriever = vectorstore.as_retriever(search_kwargs={"k": 3})  # Adjust k as needed
         
@@ -166,10 +171,15 @@ if query:
         if not relevant_docs:
             response = "I'm sorry, but I don't have enough information in the database to answer that question."
             message_placeholder.warning(response)
+            sources = []
         else:
-            response = generate_response(query, relevant_docs)
+            with tracer.start_span(span_type="llm", metadata={"query": query}):
+                response, sources = generate_response(query, relevant_docs)
+                tracer.add_metadata({"sources": sources})
             message_placeholder.markdown(response)
+            if sources:
+                sources_placeholder.info("Sources: " + ", ".join(sources))
     
-    st.session_state.messages.append({"role": "assistant", "content": response})
+    st.session_state.messages.append({"role": "assistant", "content": response, "sources": sources})
 
 st.write("Note: Make sure you have set up your Pinecone index and OpenAI API key correctly.")
