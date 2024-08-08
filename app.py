@@ -1,5 +1,4 @@
 import streamlit as st
-import json
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_pinecone import PineconeVectorStore
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -8,12 +7,13 @@ from langchain.memory import ConversationBufferMemory
 from langchain.callbacks.tracers import LangChainTracer
 from langchain.callbacks.manager import CallbackManager
 from pinecone import Pinecone
-from datetime import datetime
 from PyPDF2 import PdfReader
 import os
 from langsmith import Client
 from dotenv import load_dotenv
 import uuid
+import json
+from datetime import datetime
 
 # Load environment variables
 load_dotenv()
@@ -62,15 +62,6 @@ def extract_text_from_pdf(pdf_file):
     for page in pdf_reader.pages:
         text += page.extract_text() + " "
     return text
-def save_conversation():
-    if st.session_state.messages:
-        conversation = {
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "messages": st.session_state.messages
-        }
-        json_string = json.dumps(conversation, indent=2)
-        return json_string
-    return None
 
 def process_and_upsert_pdf(pdf_file):
     text = extract_text_from_pdf(pdf_file)
@@ -92,28 +83,62 @@ def process_and_upsert_pdf(pdf_file):
     
     return len(chunks)
 
+def save_conversation():
+    if st.session_state.messages:
+        conversation = {
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "messages": st.session_state.messages
+        }
+        json_string = json.dumps(conversation, indent=2)
+        return json_string
+    return None
+
 # Streamlit UI
-st.sidebar.markdown("""
-    <style>
-    .big-font {
-        font-size:30px !important;
-        font-weight: bold;
-        color: #008080;
-    }
-    </style>
-    <p class="big-font">Gradient Cyber</p>
-    """, unsafe_allow_html=True)
-st.sidebar.title("PDF Uploader")
-
-uploaded_file = st.sidebar.file_uploader("Choose a PDF file", type="pdf")
-if uploaded_file is not None:
-    st.sidebar.write("File uploaded successfully!")
-    if st.sidebar.button("Process and Upsert to Pinecone"):
-        with st.sidebar.spinner("Processing PDF and upserting to Pinecone..."):
-            num_chunks = process_and_upsert_pdf(uploaded_file)
-            st.sidebar.success(f"Processed and upserted {num_chunks} chunks to Pinecone.")
-
 st.title("Gradient Cyber Q&A System")
+
+# Sidebar
+with st.sidebar:
+    st.markdown("""
+        <style>
+        .big-font {
+            font-size:30px !important;
+            font-weight: bold;
+            color: #008080;
+        }
+        </style>
+        <p class="big-font">Gradient Cyber</p>
+        """, unsafe_allow_html=True)
+    
+    st.title("PDF Uploader")
+
+    uploaded_file = st.file_uploader("Choose a PDF file", type="pdf", key="pdf_uploader")
+    if uploaded_file is not None:
+        st.write("File uploaded successfully!")
+        if st.button("Process and Upsert to Pinecone", key="process_button"):
+            with st.spinner("Processing PDF and upserting to Pinecone..."):
+                num_chunks = process_and_upsert_pdf(uploaded_file)
+                st.success(f"Processed and upserted {num_chunks} chunks to Pinecone.")
+
+    st.title("Conversation History")
+    if st.button("Clear History", key="clear_history"):
+        st.session_state.messages = []
+        if "doc_ids" in st.session_state:
+            st.session_state.doc_ids = []
+        st.success("Conversation history and document references cleared.")
+
+    if st.button("Save Conversation", key="save_conversation"):
+        conversation_json = save_conversation()
+        if conversation_json:
+            st.download_button(
+                label="Download Conversation",
+                data=conversation_json,
+                file_name=f"conversation_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                mime="application/json",
+                key="download_conversation"
+            )
+            st.success("Conversation saved. Click the download button to get the file.")
+        else:
+            st.warning("No conversation to save.")
 
 # Initialize session state for chat history
 if "messages" not in st.session_state:
@@ -162,32 +187,5 @@ if query:
         message_placeholder.markdown(full_response)
     
     st.session_state.messages.append({"role": "assistant", "content": full_response})
-st.sidebar.title("Conversation History")
-if st.sidebar.button("Clear History"):
-    st.session_state.messages = []
-    if "doc_ids" in st.session_state:
-        st.session_state.doc_ids = []
-    st.sidebar.success("Conversation history and document references cleared.")
-
-# Add Save Conversation button
-if st.sidebar.button("Save Conversation"):
-    conversation_json = save_conversation()
-    if conversation_json:
-        st.sidebar.download_button(
-            label="Download Conversation",
-            data=conversation_json,
-            file_name=f"conversation_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-            mime="application/json"
-        )
-        st.sidebar.success("Conversation saved. Click the download button to get the file.")
-    else:
-        st.sidebar.warning("No conversation to save.")
-
-st.sidebar.title("Conversation History")
-if st.sidebar.button("Clear History"):
-    st.session_state.messages = []
-    if "doc_ids" in st.session_state:
-        st.session_state.doc_ids = []
-    st.sidebar.success("Conversation history and document references cleared.")
 
 st.write("Note: Make sure you have set up your Pinecone index and OpenAI API key correctly.")
