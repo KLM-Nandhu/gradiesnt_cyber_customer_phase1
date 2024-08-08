@@ -1,4 +1,5 @@
 import streamlit as st
+import json
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_pinecone import PineconeVectorStore
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -7,6 +8,7 @@ from langchain.memory import ConversationBufferMemory
 from langchain.callbacks.tracers import LangChainTracer
 from langchain.callbacks.manager import CallbackManager
 from pinecone import Pinecone
+from datetime import datetime
 from PyPDF2 import PdfReader
 import os
 from langsmith import Client
@@ -60,6 +62,15 @@ def extract_text_from_pdf(pdf_file):
     for page in pdf_reader.pages:
         text += page.extract_text() + " "
     return text
+def save_conversation():
+    if st.session_state.messages:
+        conversation = {
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "messages": st.session_state.messages
+        }
+        json_string = json.dumps(conversation, indent=2)
+        return json_string
+    return None
 
 def process_and_upsert_pdf(pdf_file):
     text = extract_text_from_pdf(pdf_file)
@@ -151,6 +162,26 @@ if query:
         message_placeholder.markdown(full_response)
     
     st.session_state.messages.append({"role": "assistant", "content": full_response})
+st.sidebar.title("Conversation History")
+if st.sidebar.button("Clear History"):
+    st.session_state.messages = []
+    if "doc_ids" in st.session_state:
+        st.session_state.doc_ids = []
+    st.sidebar.success("Conversation history and document references cleared.")
+
+# Add Save Conversation button
+if st.sidebar.button("Save Conversation"):
+    conversation_json = save_conversation()
+    if conversation_json:
+        st.sidebar.download_button(
+            label="Download Conversation",
+            data=conversation_json,
+            file_name=f"conversation_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+            mime="application/json"
+        )
+        st.sidebar.success("Conversation saved. Click the download button to get the file.")
+    else:
+        st.sidebar.warning("No conversation to save.")
 
 st.sidebar.title("Conversation History")
 if st.sidebar.button("Clear History"):
