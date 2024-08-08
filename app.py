@@ -10,6 +10,11 @@ import os
 from langsmith import Client
 from dotenv import load_dotenv
 import uuid
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
@@ -32,74 +37,113 @@ if not all([OPENAI_API_KEY, PINECONE_API_KEY, LANGCHAIN_API_KEY]):
 # Initialize Pinecone and OpenAI
 INDEX_NAME = "gradientcyber"
 
-pc = Pinecone(api_key=PINECONE_API_KEY)
-index_name = "gradientcyber"
+try:
+    pc = Pinecone(api_key=PINECONE_API_KEY)
+    index_name = "gradientcyber"
+    index = pc.Index(index_name)
+    logger.info("Successfully connected to Pinecone")
+except Exception as e:
+    logger.error(f"Error connecting to Pinecone: {str(e)}")
+    st.error(f"Error connecting to Pinecone: {str(e)}")
+    st.stop()
 
 # Initialize LangChain components
-embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
-vectorstore = PineconeVectorStore(pinecone_api_key=PINECONE_API_KEY, index_name=index_name, embedding=embeddings)
+try:
+    embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
+    vectorstore = PineconeVectorStore(pinecone_api_key=PINECONE_API_KEY, index_name=index_name, embedding=embeddings)
+    logger.info("Successfully initialized LangChain components")
+except Exception as e:
+    logger.error(f"Error initializing LangChain components: {str(e)}")
+    st.error(f"Error initializing LangChain components: {str(e)}")
+    st.stop()
 
 # Initialize LangSmith client
-client = Client(api_key=LANGCHAIN_API_KEY)
-
-# Initialize LangChain tracer and callback manager
-tracer = LangChainTracer(project_name="gradient_cyber_customer_bot", client=client)
-callback_manager = CallbackManager([tracer])
-llm = ChatOpenAI(
-    openai_api_key=OPENAI_API_KEY,
-    model_name="gpt-4o",
-    temperature=0,
-    callback_manager=callback_manager
-)
+try:
+    client = Client(api_key=LANGCHAIN_API_KEY)
+    tracer = LangChainTracer(project_name="gradient_cyber_customer_bot", client=client)
+    callback_manager = CallbackManager([tracer])
+    llm = ChatOpenAI(
+        openai_api_key=OPENAI_API_KEY,
+        model_name="gpt-4",
+        temperature=0,
+        callback_manager=callback_manager
+    )
+    logger.info("Successfully initialized LangSmith client and LLM")
+except Exception as e:
+    logger.error(f"Error initializing LangSmith client or LLM: {str(e)}")
+    st.error(f"Error initializing LangSmith client or LLM: {str(e)}")
+    st.stop()
 
 def extract_text_from_pdf(pdf_file):
-    pdf_reader = PdfReader(pdf_file)
-    text = ""
-    for page in pdf_reader.pages:
-        text += page.extract_text() + " "
-    return text
+    try:
+        pdf_reader = PdfReader(pdf_file)
+        text = ""
+        for page in pdf_reader.pages:
+            text += page.extract_text() + " "
+        return text
+    except Exception as e:
+        logger.error(f"Error extracting text from PDF: {str(e)}")
+        st.error(f"Error extracting text from PDF: {str(e)}")
+        return None
 
 def process_and_upsert_pdf(pdf_file):
     text = extract_text_from_pdf(pdf_file)
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-    chunks = text_splitter.split_text(text)
+    if not text:
+        return 0
     
-    doc_id = str(uuid.uuid4())
-    metadatas = [{"source": pdf_file.name, "doc_id": doc_id, "chunk_id": f"chunk_{i}"} for i, _ in enumerate(chunks)]
-    
-    vectorstore.add_texts(chunks, metadatas=metadatas)
-    
-    if "doc_ids" not in st.session_state:
-        st.session_state.doc_ids = []
-    st.session_state.doc_ids.append(doc_id)
-    
-    return len(chunks)
+    try:
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+        chunks = text_splitter.split_text(text)
+        
+        doc_id = str(uuid.uuid4())
+        metadatas = [{"source": pdf_file.name, "doc_id": doc_id, "chunk_id": f"chunk_{i}"} for i, _ in enumerate(chunks)]
+        
+        vectorstore.add_texts(chunks, metadatas=metadatas)
+        
+        if "doc_ids" not in st.session_state:
+            st.session_state.doc_ids = []
+        st.session_state.doc_ids.append(doc_id)
+        
+        return len(chunks)
+    except Exception as e:
+        logger.error(f"Error processing and upserting PDF: {str(e)}")
+        st.error(f"Error processing and upserting PDF: {str(e)}")
+        return 0
 
 def get_relevant_documents(query, retriever):
-    docs = retriever.get_relevant_documents(query)
-    return docs
+    try:
+        docs = retriever.get_relevant_documents(query)
+        return docs
+    except Exception as e:
+        logger.error(f"Error retrieving relevant documents: {str(e)}")
+        st.error(f"Error retrieving relevant documents: {str(e)}")
+        return []
 
 def generate_response(query, relevant_docs):
     if not relevant_docs:
-        return None, None
+        return "I don't have any relevant information in my database to answer this question. Please try asking about topics related to the documents you've uploaded.", None
     
-    context = "\n".join([doc.page_content for doc in relevant_docs])
-    prompt = f"""
-    Based solely on the following context, answer the question. If the answer cannot be found in the context, say "I don't have enough information to answer that question."
+    try:
+        context = "\n".join([doc.page_content for doc in relevant_docs])
+        prompt = f"""
+        Based solely on the following context, answer the question. If the answer cannot be found in the context, explain why you can't answer the question based on the available information.
 
-    Context: {context}
+        Context: {context}
 
-    Question: {query}
+        Question: {query}
 
-    Answer:
-    """
-    
-    response = llm.predict(prompt)
-    source = relevant_docs[0].metadata if relevant_docs else None
-    return response, source
+        Answer:
+        """
+        
+        response = llm.predict(prompt)
+        source = relevant_docs[0].metadata if relevant_docs else None
+        return response, source
+    except Exception as e:
+        logger.error(f"Error generating response: {str(e)}")
+        return f"An error occurred while generating the response: {str(e)}", None
 
 # Streamlit UI
-st.title("Gradient Cyber")
+st.title("Gradient Cyber Q&A System")
 
 # Initialize session state
 if "messages" not in st.session_state:
@@ -118,10 +162,13 @@ with st.sidebar:
         if st.button("Process and Upsert to Pinecone"):
             with st.spinner("Processing PDF and upserting to Pinecone..."):
                 num_chunks = process_and_upsert_pdf(uploaded_file)
-                st.success(f"Processed and upserted {num_chunks} chunks to Pinecone.")
+                if num_chunks > 0:
+                    st.success(f"Processed and upserted {num_chunks} chunks to Pinecone.")
+                else:
+                    st.error("Failed to process and upsert PDF.")
     
     st.header("Controls")
-    if st.button("Conversation History"):
+    if st.button("Toggle Conversation History"):
         st.session_state.show_history = not st.session_state.show_history
     
     if st.button("Clear History"):
@@ -163,16 +210,11 @@ if query:
             )
         
         relevant_docs = get_relevant_documents(query, retriever)
+        response, source = generate_response(query, relevant_docs)
         
-        if not relevant_docs:
-            response = "I'm sorry, but I don't have enough information in the database to answer that question."
-            message_placeholder.warning(response)
-            source = None
-        else:
-            response, source = generate_response(query, relevant_docs)
-            message_placeholder.markdown(response)
-            if source:
-                st.info(f"Source: {source['source']}, Chunk ID: {source['chunk_id']}")
+        message_placeholder.markdown(response)
+        if source:
+            st.info(f"Source: {source['source']}, Chunk ID: {source['chunk_id']}")
     
     st.session_state.messages.append({"content": query, "response": response, "source": source})
 
