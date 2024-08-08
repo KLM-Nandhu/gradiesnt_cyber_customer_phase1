@@ -9,128 +9,77 @@ from langchain.callbacks.manager import CallbackManager
 from pinecone import Pinecone
 from PyPDF2 import PdfReader
 import os
-from dotenv import load_dotenv
 from langsmith import Client
-import logging
-
-# Set up logging
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
+from dotenv import load_dotenv
+import uuid
 
 # Load environment variables
 load_dotenv()
 
-# Set environment variables for LangSmith
-os.environ["LANGCHAIN_TRACING_V2"] = os.getenv("LANGCHAIN_TRACING_V2", "true")
-os.environ["LANGCHAIN_ENDPOINT"] = os.getenv("LANGCHAIN_ENDPOINT", "https://api.smith.langchain.com")
-os.environ["LANGCHAIN_API_KEY"] = os.getenv("LANGCHAIN_API_KEY")
-os.environ["LANGCHAIN_PROJECT"] = os.getenv("LANGCHAIN_PROJECT", "gradient_cyber_customer_bot")
+# Set environment variables
+os.environ["LANGCHAIN_TRACING_V2"] = "true"
+os.environ["LANGCHAIN_ENDPOINT"] = "https://api.smith.langchain.com"
+os.environ["LANGCHAIN_PROJECT"] = "gradient_cyber_customer_bot"
+
+# Get API keys from environment variables
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
+LANGCHAIN_API_KEY = os.getenv("LANGCHAIN_API_KEY")
+
+# Ensure all required API keys are present
+if not all([OPENAI_API_KEY, PINECONE_API_KEY, LANGCHAIN_API_KEY]):
+    st.error("Missing one or more required API keys. Please check your .env file or Streamlit secrets.")
+    st.stop()
 
 # Initialize Pinecone and OpenAI
-PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+INDEX_NAME = "gradientcyber"
 
-if not PINECONE_API_KEY or not OPENAI_API_KEY:
-    logger.error("Missing API keys")
-    st.error("Missing API keys. Please set PINECONE_API_KEY and OPENAI_API_KEY in your .env file.")
-    st.stop()
+pc = Pinecone(api_key=PINECONE_API_KEY)
+index_name = "gradientcyber"
 
-try:
-    pc = Pinecone(api_key=PINECONE_API_KEY)
-    index_name = "gradientcyber"
-    logger.debug(f"Successfully connected to Pinecone")
-except Exception as e:
-    logger.exception("Error connecting to Pinecone:")
-    st.error(f"Error connecting to Pinecone: {str(e)}")
-    st.stop()
+# Initialize LangChain components
+embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
+vectorstore = PineconeVectorStore(pinecone_api_key=PINECONE_API_KEY, index_name=index_name, embedding=embeddings)
 
-def ensure_pinecone_index(index_name, dimension=1536):
-    try:
-        if index_name not in pc.list_indexes():
-            pc.create_index(
-                name=index_name,
-                dimension=dimension,
-                metric='cosine'
-            )
-            logger.debug(f"Created new Pinecone index: {index_name}")
-        else:
-            logger.debug(f"Pinecone index {index_name} already exists")
-    except Exception as e:
-        logger.exception(f"Error ensuring Pinecone index {index_name}:")
-        st.error(f"Error with Pinecone index: {str(e)}")
-        st.stop()
+# Initialize LangSmith client
+client = Client(api_key=LANGCHAIN_API_KEY)
 
-# Ensure Pinecone index exists
-ensure_pinecone_index(index_name)
-
-try:
-    # Initialize LangChain components
-    embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
-    vectorstore = PineconeVectorStore(pinecone_api_key=PINECONE_API_KEY, index_name=index_name, embedding=embeddings)
-    logger.debug("Successfully initialized OpenAI embeddings and Pinecone vector store")
-except Exception as e:
-    logger.exception("Error initializing OpenAI embeddings or Pinecone vector store:")
-    st.error(f"Error initializing components: {str(e)}")
-    st.stop()
-
-try:
-    # Initialize LangSmith client
-    client = Client(api_key=os.environ["LANGCHAIN_API_KEY"])
-    
-    # Initialize LangChain tracer and callback manager
-    tracer = LangChainTracer(project_name="gradient_cyber_customer_bot", client=client)
-    callback_manager = CallbackManager([tracer])
-    
-    llm = ChatOpenAI(
-        openai_api_key=OPENAI_API_KEY,
-        model_name="gpt-4",
-        temperature=0,
-        callback_manager=callback_manager
-    )
-    logger.debug("Successfully initialized LangSmith client and LLM")
-except Exception as e:
-    logger.exception("Error initializing LangSmith client or LLM:")
-    st.error(f"Error initializing LangSmith or LLM: {str(e)}")
-    st.stop()
-
-@st.cache_data
-def get_embedding(_openai_api_key, text):
-    try:
-        embeddings = OpenAIEmbeddings(openai_api_key=_openai_api_key)
-        return embeddings.embed_query(text)
-    except Exception as e:
-        logger.exception("Error getting embedding:")
-        st.error(f"Error getting embedding: {str(e)}")
-        return None
+# Initialize LangChain tracer and callback manager
+tracer = LangChainTracer(project_name="gradient_cyber_customer_bot", client=client)
+callback_manager = CallbackManager([tracer])
+llm = ChatOpenAI(
+    openai_api_key=OPENAI_API_KEY,
+    model_name="gpt-4o",
+    temperature=0,
+    callback_manager=callback_manager
+)
 
 def extract_text_from_pdf(pdf_file):
-    try:
-        pdf_reader = PdfReader(pdf_file)
-        text = ""
-        for page in pdf_reader.pages:
-            text += page.extract_text() + " "
-        return text
-    except Exception as e:
-        logger.exception("Error extracting text from PDF:")
-        st.error(f"Error extracting text from PDF: {str(e)}")
-        return None
+    pdf_reader = PdfReader(pdf_file)
+    text = ""
+    for page in pdf_reader.pages:
+        text += page.extract_text() + " "
+    return text
 
 def process_and_upsert_pdf(pdf_file):
     text = extract_text_from_pdf(pdf_file)
-    if text is None:
-        return 0
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+    chunks = text_splitter.split_text(text)
     
-    try:
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-        chunks = text_splitter.split_text(text)
-        
-        vectorstore.add_texts(chunks, metadatas=[{"source": pdf_file.name} for _ in chunks])
-        logger.debug(f"Successfully processed and upserted {len(chunks)} chunks")
-        return len(chunks)
-    except Exception as e:
-        logger.exception("Error processing and upserting PDF:")
-        st.error(f"Error processing and upserting PDF: {str(e)}")
-        return 0
+    # Generate a unique ID for this document
+    doc_id = str(uuid.uuid4())
+    
+    # Add the doc_id to the metadata of each chunk
+    metadatas = [{"source": pdf_file.name, "doc_id": doc_id} for _ in chunks]
+    
+    vectorstore.add_texts(chunks, metadatas=metadatas)
+    
+    # Store the doc_id in session state
+    if "doc_ids" not in st.session_state:
+        st.session_state.doc_ids = []
+    st.session_state.doc_ids.append(doc_id)
+    
+    return len(chunks)
 
 # Streamlit UI
 st.sidebar.markdown("""
@@ -143,21 +92,15 @@ st.sidebar.markdown("""
     </style>
     <p class="big-font">Gradient Cyber</p>
     """, unsafe_allow_html=True)
-
 st.sidebar.title("PDF Uploader")
 
 uploaded_file = st.sidebar.file_uploader("Choose a PDF file", type="pdf")
-
 if uploaded_file is not None:
     st.sidebar.write("File uploaded successfully!")
-    
     if st.sidebar.button("Process and Upsert to Pinecone"):
         with st.sidebar.spinner("Processing PDF and upserting to Pinecone..."):
             num_chunks = process_and_upsert_pdf(uploaded_file)
-            if num_chunks > 0:
-                st.sidebar.success(f"Processed and upserted {num_chunks} chunks to Pinecone.")
-            else:
-                st.sidebar.error("Failed to process and upsert PDF.")
+            st.sidebar.success(f"Processed and upserted {num_chunks} chunks to Pinecone.")
 
 st.title("Gradient Cyber Q&A System")
 
@@ -172,48 +115,48 @@ for message in st.session_state.messages:
 
 # Q&A section
 query = st.chat_input("Ask a question about the uploaded documents:")
-
 if query:
     st.session_state.messages.append({"role": "human", "content": query})
     with st.chat_message("human"):
         st.markdown(query)
-
+    
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
         full_response = ""
-
-        try:
-            # Create a ConversationalRetrievalChain
-            memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
-            qa_chain = ConversationalRetrievalChain.from_llm(
-                llm=llm,
-                retriever=vectorstore.as_retriever(),
-                memory=memory,
-                callback_manager=callback_manager
+        
+        # Create a ConversationalRetrievalChain with a filtered retriever
+        memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+        
+        # Create a filtered retriever
+        retriever = vectorstore.as_retriever()
+        
+        # Filter the retriever to only search documents with the stored doc_ids
+        if "doc_ids" in st.session_state and st.session_state.doc_ids:
+            retriever = vectorstore.as_retriever(
+                search_kwargs={
+                    "filter": {"doc_id": {"$in": st.session_state.doc_ids}}
+                }
             )
-
-            # Generate the response
-            result = qa_chain({"question": query, "chat_history": [(msg["role"], msg["content"]) for msg in st.session_state.messages]})
-            full_response = result["answer"]
-            logger.debug("Successfully generated response")
-            message_placeholder.markdown(full_response)
-        except Exception as e:
-            logger.exception("Error generating response:")
-            error_message = f"An error occurred while generating the response: {str(e)}"
-            message_placeholder.error(error_message)
-            full_response = error_message
+        
+        qa_chain = ConversationalRetrievalChain.from_llm(
+            llm=llm,
+            retriever=retriever,
+            memory=memory,
+            callback_manager=callback_manager
+        )
+        
+        # Generate the response
+        result = qa_chain({"question": query, "chat_history": [(msg["role"], msg["content"]) for msg in st.session_state.messages]})
+        full_response = result["answer"]
+        message_placeholder.markdown(full_response)
     
     st.session_state.messages.append({"role": "assistant", "content": full_response})
 
 st.sidebar.title("Conversation History")
 if st.sidebar.button("Clear History"):
     st.session_state.messages = []
-    logger.debug("Cleared conversation history")
+    if "doc_ids" in st.session_state:
+        st.session_state.doc_ids = []
+    st.sidebar.success("Conversation history and document references cleared.")
 
-st.sidebar.markdown("---")
-st.sidebar.markdown("v1.0.0 | [GitHub](https://github.com/yourusername/gradient-cyber-qa)")
-
-st.markdown("---")
-st.markdown("Need help? Check out the [documentation](https://your-docs-link.com) or [report an issue](https://github.com/yourusername/gradient-cyber-qa/issues).")
-
-logger.debug("App finished running")
+st.write("Note: Make sure you have set up your Pinecone index and OpenAI API key correctly.")
