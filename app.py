@@ -76,32 +76,7 @@ def process_and_upsert_pdf(pdf_file):
     
     return len(chunks)
 
-# Custom CSS for boxes
-st.markdown("""
-    <style>
-        .history-box {
-            background-color: #f0f0f0;
-            padding: 10px;
-            border-radius: 5px;
-        }
-        .response-box {
-            background-color: #e6f7ff;
-            padding: 10px;
-            border-radius: 5px;
-            margin: 10px 0;
-        }
-        .title {
-            color: #003366;
-            text-align: center;
-            margin-bottom: 20px;
-        }
-        .conversation-history {
-            background-color: #f8f8f8;
-            padding: 10px;
-            border-radius: 5px;
-        }
-    </style>
-""", unsafe_allow_html=True)
+
 
 # Initialize session state
 if "messages" not in st.session_state:
@@ -173,9 +148,9 @@ if query:
         for message in st.session_state.messages:
             if message["role"] == "human":
                 st.markdown('<div class="response-box">', unsafe_allow_html=True)
-                st.markdown(f"👤 **User:** {message['content']}")
+                st.markdown(f"👤 **:** {message['content']}")
                 st.markdown('</div>', unsafe_allow_html=True)
             else:
                 st.markdown('<div class="response-box">', unsafe_allow_html=True)
-                st.markdown(f"🤖 **Assistant:** {message['content']}")
+                st.markdown(f"🤖 **:** {message['content']}")
                 st.markdown('</div>', unsafe_allow_html=True)
