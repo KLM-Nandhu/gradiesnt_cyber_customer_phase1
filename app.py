@@ -48,7 +48,7 @@ tracer = LangChainTracer(project_name="gradient_cyber_customer_bot", client=clie
 callback_manager = CallbackManager([tracer])
 llm = ChatOpenAI(
     openai_api_key=OPENAI_API_KEY,
-    model_name="gpt-4",
+    model_name="gpt-4o",
     temperature=0,
     callback_manager=callback_manager
 )
@@ -77,7 +77,26 @@ def process_and_upsert_pdf(pdf_file):
     return len(chunks)
 
 # Custom CSS for boxes
-
+st.markdown("""
+    <style>
+        .history-box {
+            background-color: #f0f0f0;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .response-box {
+            background-color: #e6f7ff;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .title {
+            color: #003366;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+    </style>
+""", unsafe_allow_html=True)
 
 # Initialize session state
 if "messages" not in st.session_state:
@@ -116,7 +135,7 @@ with st.sidebar:
         st.markdown('</div>', unsafe_allow_html=True)
 
 # Main content area
-st.title("Gradient Cyber Q&A System")
+st.markdown('<h1 class="title">Gradient Cyber Q&A System</h1>', unsafe_allow_html=True)
 
 # Response Box (will be populated when there's a response)
 response_container = st.container()
