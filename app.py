@@ -99,7 +99,7 @@ def generate_response(query, relevant_docs):
     return response, source
 
 # Streamlit UI
-st.title("Gradient Cyber Q&A System")
+st.title("Gradient Cyber")
 
 # Initialize session state
 if "messages" not in st.session_state:
