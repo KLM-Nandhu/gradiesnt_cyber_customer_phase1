@@ -99,6 +99,7 @@ if "messages" not in st.session_state:
 # Sidebar
 with st.sidebar:
     st.title("Gradient Cyber")
+    
     st.header("PDF Uploader")
     uploaded_file = st.file_uploader("Choose a PDF file", type="pdf")
     if uploaded_file:
@@ -114,48 +115,49 @@ with st.sidebar:
         if "doc_ids" in st.session_state:
             st.session_state.doc_ids = []
         st.success("Conversation history and document references cleared.")
+    
+    # Conversation History in Sidebar
+    st.header("Conversation History")
+    with st.container():
+        st.markdown('<div class="history-box">', unsafe_allow_html=True)
+        for message in st.session_state.messages:
+            st.markdown(f"**{message['role'].capitalize()}:** {message['content']}")
+        st.markdown('</div>', unsafe_allow_html=True)
 
 # Main content area
 st.title("Gradient Cyber Q&A System")
-
-# Conversation History Box
-st.subheader("Conversation History")
-with st.container():
-    st.markdown('<div class="history-box">', unsafe_allow_html=True)
-    for message in st.session_state.messages:
-        st.markdown(f"**{message['role'].capitalize()}:** {message['content']}")
-    st.markdown('</div>', unsafe_allow_html=True)
 
 # Response Box (will be populated when there's a response)
 response_container = st.container()
 
 # Query Input
-query = st.chat_input("Ask a question about the uploaded documents:")
-if query:
-    st.session_state.messages.append({"role": "human", "content": query})
-    
-    with st.spinner("Generating response..."):
-        memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
-        retriever = vectorstore.as_retriever()
-        if "doc_ids" in st.session_state and st.session_state.doc_ids:
-            retriever = vectorstore.as_retriever(
-                search_kwargs={
-                    "filter": {"doc_id": {"$in": st.session_state.doc_ids}}
-                }
+query = st.text_input("Ask a question about the uploaded documents:")
+if st.button("Send"):
+    if query:
+        st.session_state.messages.append({"role": "human", "content": query})
+        
+        with st.spinner("Generating response..."):
+            memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+            retriever = vectorstore.as_retriever()
+            if "doc_ids" in st.session_state and st.session_state.doc_ids:
+                retriever = vectorstore.as_retriever(
+                    search_kwargs={
+                        "filter": {"doc_id": {"$in": st.session_state.doc_ids}}
+                    }
+                )
+            qa_chain = ConversationalRetrievalChain.from_llm(
+                llm=llm,
+                retriever=retriever,
+                memory=memory,
+                callback_manager=callback_manager
             )
-        qa_chain = ConversationalRetrievalChain.from_llm(
-            llm=llm,
-            retriever=retriever,
-            memory=memory,
-            callback_manager=callback_manager
-        )
-        result = qa_chain({"question": query, "chat_history": [(msg["role"], msg["content"]) for msg in st.session_state.messages]})
-        response = result["answer"]
-        
-        st.session_state.messages.append({"role": "assistant", "content": response})
-        
-        # Display response in the response box
-        with response_container:
-            st.markdown('<div class="response-box">', unsafe_allow_html=True)
-            st.markdown(f"**Assistant:** {response}")
-            st.markdown('</div>', unsafe_allow_html=True)
+            result = qa_chain({"question": query, "chat_history": [(msg["role"], msg["content"]) for msg in st.session_state.messages]})
+            response = result["answer"]
+            
+            st.session_state.messages.append({"role": "assistant", "content": response})
+            
+            # Display response in the response box
+            with response_container:
+                st.markdown('<div class="response-box">', unsafe_allow_html=True)
+                st.markdown(f"**Assistant:** {response}")
+                st.markdown('</div>', unsafe_allow_html=True)
