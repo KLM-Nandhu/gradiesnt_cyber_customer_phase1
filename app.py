@@ -77,17 +77,16 @@ def process_and_upsert_pdf(pdf_file):
     
     return len(chunks)
 
-# Streamlit UI
-st.title("Gradient Cyber Q&A System")
-
 # Initialize session state
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "show_history" not in st.session_state:
     st.session_state.show_history = False
 
-# Sidebar for PDF upload
+# Sidebar
 with st.sidebar:
+    st.title("Gradient Cyber")
+    
     st.header("PDF Uploader")
     uploaded_file = st.file_uploader("Choose a PDF file", type="pdf")
     if uploaded_file:
@@ -96,51 +95,8 @@ with st.sidebar:
             with st.spinner("Processing PDF and upserting to Pinecone..."):
                 num_chunks = process_and_upsert_pdf(uploaded_file)
                 st.success(f"Processed and upserted {num_chunks} chunks to Pinecone.")
-
-# Main content area
-col1, col2 = st.columns([3, 1])
-
-with col1:
-    st.subheader("Chat")
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
-
-    query = st.chat_input("Ask a question about the uploaded documents:")
-    if query:
-        st.session_state.messages.append({"role": "human", "content": query})
-        with st.chat_message("human"):
-            st.markdown(query)
-        
-        with st.chat_message("assistant"):
-            message_placeholder = st.empty()
-            full_response = ""
-            
-            memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
-            retriever = vectorstore.as_retriever()
-            
-            if "doc_ids" in st.session_state and st.session_state.doc_ids:
-                retriever = vectorstore.as_retriever(
-                    search_kwargs={
-                        "filter": {"doc_id": {"$in": st.session_state.doc_ids}}
-                    }
-                )
-            
-            qa_chain = ConversationalRetrievalChain.from_llm(
-                llm=llm,
-                retriever=retriever,
-                memory=memory,
-                callback_manager=callback_manager
-            )
-            
-            result = qa_chain({"question": query, "chat_history": [(msg["role"], msg["content"]) for msg in st.session_state.messages]})
-            full_response = result["answer"]
-            message_placeholder.markdown(full_response)
-        
-        st.session_state.messages.append({"role": "assistant", "content": full_response})
-
-with col2:
-    st.subheader("Controls")
+    
+    st.header("Controls")
     if st.button("Toggle Conversation History"):
         st.session_state.show_history = not st.session_state.show_history
     
@@ -149,10 +105,50 @@ with col2:
         if "doc_ids" in st.session_state:
             st.session_state.doc_ids = []
         st.success("Conversation history and document references cleared.")
+    
+    if st.session_state.show_history:
+        st.subheader("Conversation History")
+        for message in st.session_state.messages:
+            st.text(f"{message['role']}: {message['content'][:50]}...")
 
-if st.session_state.show_history:
-    st.subheader("Conversation History")
-    for message in st.session_state.messages:
-        st.text(f"{message['role']}: {message['content']}")
+# Main content area
+st.title("Gradient Cyber Q&A System")
+
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+
+query = st.chat_input("Ask a question about the uploaded documents:")
+if query:
+    st.session_state.messages.append({"role": "human", "content": query})
+    with st.chat_message("human"):
+        st.markdown(query)
+    
+    with st.chat_message("assistant"):
+        message_placeholder = st.empty()
+        full_response = ""
+        
+        memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+        retriever = vectorstore.as_retriever()
+        
+        if "doc_ids" in st.session_state and st.session_state.doc_ids:
+            retriever = vectorstore.as_retriever(
+                search_kwargs={
+                    "filter": {"doc_id": {"$in": st.session_state.doc_ids}}
+                }
+            )
+        
+        qa_chain = ConversationalRetrievalChain.from_llm(
+            llm=llm,
+            retriever=retriever,
+            memory=memory,
+            callback_manager=callback_manager
+        )
+        
+        result = qa_chain({"question": query, "chat_history": [(msg["role"], msg["content"]) for msg in st.session_state.messages]})
+        full_response = result["answer"]
+        message_placeholder.markdown(full_response)
+    
+    st.session_state.messages.append({"role": "assistant", "content": full_response})
 
 st.write("Note: Make sure you have set up your Pinecone index and OpenAI API key correctly.")
