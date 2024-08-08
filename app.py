@@ -103,8 +103,6 @@ st.title("Gradient Cyber Q&A System")
 # Initialize session state
 if "messages" not in st.session_state:
     st.session_state.messages = []
-if "show_history" not in st.session_state:
-    st.session_state.show_history = False
 
 # Sidebar
 with st.sidebar:
@@ -119,37 +117,24 @@ with st.sidebar:
                 num_chunks = process_and_upsert_pdf(uploaded_file)
                 st.success(f"Processed and upserted {num_chunks} chunks to Pinecone.")
     
-    st.header("Controls")
-    if st.button("Toggle Conversation History"):
-        st.session_state.show_history = not st.session_state.show_history
-    
     if st.button("Clear History"):
         st.session_state.messages = []
         if "doc_ids" in st.session_state:
             st.session_state.doc_ids = []
         st.success("Conversation history and document references cleared.")
-    
-    if st.session_state.show_history:
-        st.subheader("Conversation History")
-        for i, message in enumerate(st.session_state.messages):
-            with st.container():
-                st.markdown(f"**{message['role'].capitalize()}:**")
-                st.text_area(f"Message {i+1}", value=message['content'], height=100, disabled=True)
-                st.markdown("---")
 
 # Main content area
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+st.subheader("Conversation")
+chat_container = st.container()
 
-query = st.chat_input("Ask a question about the uploaded documents:")
-if query:
-    st.session_state.messages.append({"role": "human", "content": query})
-    with st.chat_message("human"):
-        st.markdown(query)
-    
-    with st.chat_message("assistant"):
-        message_placeholder = st.empty()
+with chat_container:
+    for message in st.session_state.messages:
+        st.write(f"**{message['role'].capitalize()}:** {message['content']}")
+
+query = st.text_input("Ask a question about the uploaded documents:")
+if st.button("Send"):
+    if query:
+        st.session_state.messages.append({"role": "human", "content": query})
         
         retriever = vectorstore.as_retriever(search_kwargs={"k": 3})  # Adjust k as needed
         
@@ -165,11 +150,16 @@ if query:
         
         if not relevant_docs:
             response = "I'm sorry, but I don't have enough information in the database to answer that question."
-            message_placeholder.warning(response)
+            st.warning(response)
         else:
             response = generate_response(query, relevant_docs)
-            message_placeholder.markdown(response)
-    
-    st.session_state.messages.append({"role": "assistant", "content": response})
+            st.write(f"**Assistant:** {response}")
+        
+        st.session_state.messages.append({"role": "assistant", "content": response})
+        
+        # Refresh the chat container to show the updated conversation
+        with chat_container:
+            for message in st.session_state.messages:
+                st.write(f"**{message['role'].capitalize()}:** {message['content']}")
 
 st.write("Note: Make sure you have set up your Pinecone index and OpenAI API key correctly.")
