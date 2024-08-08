@@ -65,7 +65,7 @@ def process_and_upsert_pdf(pdf_file):
     chunks = text_splitter.split_text(text)
     
     doc_id = str(uuid.uuid4())
-    metadatas = [{"source": pdf_file.name, "doc_id": doc_id} for _ in chunks]
+    metadatas = [{"source": pdf_file.name, "doc_id": doc_id, "chunk_id": f"chunk_{i}"} for i, _ in enumerate(chunks)]
     
     vectorstore.add_texts(chunks, metadatas=metadatas)
     
@@ -81,11 +81,9 @@ def get_relevant_documents(query, retriever):
 
 def generate_response(query, relevant_docs):
     if not relevant_docs:
-        return None, []
+        return None, None
     
     context = "\n".join([doc.page_content for doc in relevant_docs])
-    sources = [f"{doc.metadata['source']} (Doc ID: {doc.metadata['doc_id']})" for doc in relevant_docs]
-    
     prompt = f"""
     Based solely on the following context, answer the question. If the answer cannot be found in the context, say "I don't have enough information to answer that question."
 
@@ -97,7 +95,8 @@ def generate_response(query, relevant_docs):
     """
     
     response = llm.predict(prompt)
-    return response, sources
+    source = relevant_docs[0].metadata if relevant_docs else None
+    return response, source
 
 # Streamlit UI
 st.title("Gradient Cyber Q&A System")
@@ -133,28 +132,25 @@ with st.sidebar:
     
     if st.session_state.show_history:
         st.subheader("Conversation History")
-        for i, message in enumerate(st.session_state.messages):
-            with st.sidebar.expander(f"{message['role'].capitalize()} - Message {i+1}"):
-                st.write(message['content'])
-                if "sources" in message:
-                    st.info("Sources: " + ", ".join(message["sources"]))
+        history_text = "\n\n".join([f"Q: {msg['content']}\nA: {msg['response']}" for msg in st.session_state.messages])
+        st.text_area("Full Conversation", value=history_text, height=300)
 
 # Main content area
 for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
-        if "sources" in message:
-            st.info("Sources: " + ", ".join(message["sources"]))
+    with st.chat_message("human"):
+        st.markdown(message['content'])
+    with st.chat_message("assistant"):
+        st.markdown(message['response'])
+        if message.get('source'):
+            st.info(f"Source: {message['source']['source']}, Chunk ID: {message['source']['chunk_id']}")
 
 query = st.chat_input("Ask a question about the uploaded documents:")
 if query:
-    st.session_state.messages.append({"role": "human", "content": query})
     with st.chat_message("human"):
         st.markdown(query)
     
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
-        sources_placeholder = st.empty()
         
         retriever = vectorstore.as_retriever(search_kwargs={"k": 3})  # Adjust k as needed
         
@@ -171,15 +167,13 @@ if query:
         if not relevant_docs:
             response = "I'm sorry, but I don't have enough information in the database to answer that question."
             message_placeholder.warning(response)
-            sources = []
+            source = None
         else:
-            with tracer.start_span(span_type="llm", metadata={"query": query}):
-                response, sources = generate_response(query, relevant_docs)
-                tracer.add_metadata({"sources": sources})
+            response, source = generate_response(query, relevant_docs)
             message_placeholder.markdown(response)
-            if sources:
-                sources_placeholder.info("Sources: " + ", ".join(sources))
+            if source:
+                st.info(f"Source: {source['source']}, Chunk ID: {source['chunk_id']}")
     
-    st.session_state.messages.append({"role": "assistant", "content": response, "sources": sources})
+    st.session_state.messages.append({"content": query, "response": response, "source": source})
 
 st.write("Note: Make sure you have set up your Pinecone index and OpenAI API key correctly.")
