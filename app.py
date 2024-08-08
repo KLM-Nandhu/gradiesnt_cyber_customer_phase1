@@ -79,28 +79,40 @@ def process_and_upsert_pdf(pdf_file):
 # Custom CSS for chat layout
 st.markdown("""
     <style>
+        .chat-box {
+            display: flex;
+            align-items: flex-start;
+            margin: 10px 0;
+        }
+        .chat-box.user {
+            justify-content: flex-start;
+        }
+        .chat-box.assistant {
+            justify-content: flex-end;
+        }
         .chat-message {
-            padding: 1.5rem; border-radius: 0.5rem; margin-bottom: 1rem; display: flex
+            max-width: 70%;
+            padding: 10px;
+            border-radius: 10px;
+            margin: 5px;
         }
         .chat-message.user {
-            background-color: #2b313e
+            background-color: #e6f7ff;
+            text-align: left;
         }
-        .chat-message.bot {
-            background-color: #475063
+        .chat-message.assistant {
+            background-color: #f0f0f0;
+            text-align: right;
         }
-        .chat-message .avatar {
-          width: 20%;
+        .title {
+            color: #003366;
+            text-align: center;
+            margin-bottom: 20px;
         }
-        .chat-message .avatar img {
-          max-width: 78px;
-          max-height: 78px;
-          border-radius: 50%;
-          object-fit: cover;
-        }
-        .chat-message .message {
-          width: 80%;
-          padding: 0 1.5rem;
-          color: #fff;
+        .conversation-history {
+            background-color: #f8f8f8;
+            padding: 10px;
+            border-radius: 5px;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -121,11 +133,8 @@ with st.sidebar:
         st.write("File uploaded successfully!")
         if st.button("Process and Upsert to Pinecone"):
             with st.spinner("Processing PDF and upserting to Pinecone..."):
-                try:
-                    num_chunks = process_and_upsert_pdf(uploaded_file)
-                    st.success(f"Processed and upserted {num_chunks} chunks to Pinecone.")
-                except Exception as e:
-                    st.error(f"An error occurred: {str(e)}")
+                num_chunks = process_and_upsert_pdf(uploaded_file)
+                st.success(f"Processed and upserted {num_chunks} chunks to Pinecone.")
     
     st.header("Controls")
     if st.button("Toggle Conversation History"):
@@ -139,53 +148,52 @@ with st.sidebar:
     
     if st.session_state.show_history:
         st.subheader("Conversation History")
+        st.markdown('<div class="conversation-history">', unsafe_allow_html=True)
         for message in st.session_state.messages:
-            st.write(f"{message['role'].capitalize()}: {message['content']}")
+            st.markdown(f"**{message['role'].capitalize()}:** {message['content']}")
+        st.markdown('</div>', unsafe_allow_html=True)
 
 # Main content area
-st.title("Gradient Cyber Q&A System")
+st.markdown('<h1 class="title">Gradient Cyber Q&A System</h1>', unsafe_allow_html=True)
 
-# Chat interface
-for message in st.session_state.messages:
-    if message["role"] == "human":
-        st.markdown(f'<div class="chat-message user"><div class="avatar">👤</div><div class="message">{message["content"]}</div></div>', unsafe_allow_html=True)
-    else:
-        st.markdown(f'<div class="chat-message bot"><div class="avatar">🤖</div><div class="message">{message["content"]}<br><small>{message.get("chunk_info", "")}</small></div></div>', unsafe_allow_html=True)
+# Response Box (will be populated when there's a response)
+response_container = st.container()
 
-# User input
-query = st.text_input("Ask a question about the uploaded documents:")
+query = st.chat_input("Ask a question about the uploaded documents:")
 if query:
     st.session_state.messages.append({"role": "human", "content": query})
     
-    try:
-        memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
-        retriever = vectorstore.as_retriever()
-        if "doc_ids" in st.session_state and st.session_state.doc_ids:
-            retriever = vectorstore.as_retriever(
-                search_kwargs={
-                    "filter": {"doc_id": {"$in": st.session_state.doc_ids}}
-                }
-            )
-        qa_chain = ConversationalRetrievalChain.from_llm(
-            llm=llm,
-            retriever=retriever,
-            memory=memory,
-            callback_manager=callback_manager
+    memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+    retriever = vectorstore.as_retriever()
+    if "doc_ids" in st.session_state and st.session_state.doc_ids:
+        retriever = vectorstore.as_retriever(
+            search_kwargs={
+                "filter": {"doc_id": {"$in": st.session_state.doc_ids}}
+            }
         )
-        result = qa_chain({"question": query, "chat_history": [(msg["role"], msg["content"]) for msg in st.session_state.messages]})
-        full_response = result["answer"]
-        
-        # Get the metadata of the matched chunk
-        matched_metadata = result['source_documents'][0].metadata
-        chunk_info = f"Source: {matched_metadata['source']}, Chunk Index: {matched_metadata['chunk_index']}"
+    qa_chain = ConversationalRetrievalChain.from_llm(
+        llm=llm,
+        retriever=retriever,
+        memory=memory,
+        callback_manager=callback_manager
+    )
+    result = qa_chain({"question": query, "chat_history": [(msg["role"], msg["content"]) for msg in st.session_state.messages]})
+    full_response = result["answer"]
+    
+    # Get the metadata of the matched chunk
+    matched_metadata = result['source_documents'][0].metadata if result['source_documents'] else {}
+    chunk_info = f"Source: {matched_metadata.get('source', 'Unknown')}, Chunk Index: {matched_metadata.get('chunk_index', 'Unknown')}"
 
-        st.session_state.messages.append({"role": "assistant", "content": full_response, "chunk_info": chunk_info})
-        
-        # Display the new message
-        st.markdown(f'<div class="chat-message bot"><div class="avatar">🤖</div><div class="message">{full_response}<br><small>{chunk_info}</small></div></div>', unsafe_allow_html=True)
-    except Exception as e:
-        st.error(f"An error occurred: {str(e)}")
-        st.session_state.messages.append({"role": "assistant", "content": "I'm sorry, but an error occurred while processing your request. Please try again or contact support if the issue persists."})
+    st.session_state.messages.append({"role": "assistant", "content": full_response, "chunk_info": chunk_info})
 
-# Rerun the app to update the chat interface
-st.experimental_rerun()
+    # Display response in the center box
+    with response_container:
+        for message in st.session_state.messages:
+            if message["role"] == "human":
+                st.markdown('<div class="chat-box user">', unsafe_allow_html=True)
+                st.markdown(f'<div class="chat-message user">👤 {message["content"]}</div>', unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+            else:
+                st.markdown('<div class="chat-box assistant">', unsafe_allow_html=True)
+                st.markdown(f'<div class="chat-message assistant">🤖 {message["content"]}<br><small>{message["chunk_info"]}</small></div>', unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
