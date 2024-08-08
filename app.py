@@ -82,7 +82,7 @@ def process_and_upsert_pdf(pdf_file):
     return len(chunks)
 
 # Streamlit UI
-st.title("Gradient Cyber Q&A System")
+st.title("Gradient Cyber")
 
 # Sidebar
 with st.sidebar:
