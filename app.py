@@ -10,11 +10,6 @@ import os
 from langsmith import Client
 from dotenv import load_dotenv
 import uuid
-import logging
-
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
@@ -37,110 +32,70 @@ if not all([OPENAI_API_KEY, PINECONE_API_KEY, LANGCHAIN_API_KEY]):
 # Initialize Pinecone and OpenAI
 INDEX_NAME = "gradientcyber"
 
-try:
-    pc = Pinecone(api_key=PINECONE_API_KEY)
-    index_name = "gradientcyber"
-    index = pc.Index(index_name)
-    logger.info("Successfully connected to Pinecone")
-except Exception as e:
-    logger.error(f"Error connecting to Pinecone: {str(e)}")
-    st.error(f"Error connecting to Pinecone: {str(e)}")
-    st.stop()
+pc = Pinecone(api_key=PINECONE_API_KEY)
+index_name = "gradientcyber"
 
 # Initialize LangChain components
-try:
-    embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
-    vectorstore = PineconeVectorStore(pinecone_api_key=PINECONE_API_KEY, index_name=index_name, embedding=embeddings)
-    logger.info("Successfully initialized LangChain components")
-except Exception as e:
-    logger.error(f"Error initializing LangChain components: {str(e)}")
-    st.error(f"Error initializing LangChain components: {str(e)}")
-    st.stop()
+embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
+vectorstore = PineconeVectorStore(pinecone_api_key=PINECONE_API_KEY, index_name=index_name, embedding=embeddings)
 
 # Initialize LangSmith client
-try:
-    client = Client(api_key=LANGCHAIN_API_KEY)
-    tracer = LangChainTracer(project_name="gradient_cyber_customer_bot", client=client)
-    callback_manager = CallbackManager([tracer])
-    llm = ChatOpenAI(
-        openai_api_key=OPENAI_API_KEY,
-        model_name="gpt-4",
-        temperature=0,
-        callback_manager=callback_manager
-    )
-    logger.info("Successfully initialized LangSmith client and LLM")
-except Exception as e:
-    logger.error(f"Error initializing LangSmith client or LLM: {str(e)}")
-    st.error(f"Error initializing LangSmith client or LLM: {str(e)}")
-    st.stop()
+client = Client(api_key=LANGCHAIN_API_KEY)
+
+# Initialize LangChain tracer and callback manager
+tracer = LangChainTracer(project_name="gradient_cyber_customer_bot", client=client)
+callback_manager = CallbackManager([tracer])
+llm = ChatOpenAI(
+    openai_api_key=OPENAI_API_KEY,
+    model_name="gpt-4",
+    temperature=0,
+    callback_manager=callback_manager
+)
 
 def extract_text_from_pdf(pdf_file):
-    try:
-        pdf_reader = PdfReader(pdf_file)
-        text = ""
-        for page in pdf_reader.pages:
-            text += page.extract_text() + " "
-        return text
-    except Exception as e:
-        logger.error(f"Error extracting text from PDF: {str(e)}")
-        st.error(f"Error extracting text from PDF: {str(e)}")
-        return None
+    pdf_reader = PdfReader(pdf_file)
+    text = ""
+    for page in pdf_reader.pages:
+        text += page.extract_text() + " "
+    return text
 
 def process_and_upsert_pdf(pdf_file):
     text = extract_text_from_pdf(pdf_file)
-    if not text:
-        return 0
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+    chunks = text_splitter.split_text(text)
     
-    try:
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-        chunks = text_splitter.split_text(text)
-        
-        doc_id = str(uuid.uuid4())
-        metadatas = [{"source": pdf_file.name, "doc_id": doc_id, "chunk_id": f"chunk_{i}"} for i, _ in enumerate(chunks)]
-        
-        vectorstore.add_texts(chunks, metadatas=metadatas)
-        
-        if "doc_ids" not in st.session_state:
-            st.session_state.doc_ids = []
-        st.session_state.doc_ids.append(doc_id)
-        
-        return len(chunks)
-    except Exception as e:
-        logger.error(f"Error processing and upserting PDF: {str(e)}")
-        st.error(f"Error processing and upserting PDF: {str(e)}")
-        return 0
+    doc_id = str(uuid.uuid4())
+    metadatas = [{"source": pdf_file.name, "doc_id": doc_id} for _ in chunks]
+    
+    vectorstore.add_texts(chunks, metadatas=metadatas)
+    
+    if "doc_ids" not in st.session_state:
+        st.session_state.doc_ids = []
+    st.session_state.doc_ids.append(doc_id)
+    
+    return len(chunks)
 
 def get_relevant_documents(query, retriever):
-    try:
-        docs = retriever.get_relevant_documents(query)
-        return docs
-    except Exception as e:
-        logger.error(f"Error retrieving relevant documents: {str(e)}")
-        st.error(f"Error retrieving relevant documents: {str(e)}")
-        return []
+    docs = retriever.get_relevant_documents(query)
+    return docs
 
 def generate_response(query, relevant_docs):
     if not relevant_docs:
-        return "I don't have any relevant information in my database to answer this question. Please try asking about topics related to the documents you've uploaded.", None
+        return None
     
-    try:
-        context = "\n".join([doc.page_content for doc in relevant_docs])
-        prompt = f"""
-        Based solely on the following context, answer the question. If the answer cannot be found in the context, explain why you can't answer the question based on the available information.
+    context = "\n".join([doc.page_content for doc in relevant_docs])
+    prompt = f"""
+    Based solely on the following context, answer the question. If the answer cannot be found in the context, say "I don't have enough information to answer that question."
 
-        Context: {context}
+    Context: {context}
 
-        Question: {query}
+    Question: {query}
 
-        Answer:
-        """
-        
-        response = llm.predict(prompt)
-        source = relevant_docs[0].metadata if relevant_docs else None
-        return response, source
-    except Exception as e:
-        logger.error(f"Error generating response: {str(e)}")
-        return f"An error occurred while generating the response: {str(e)}", None
+    Answer:
+    """
+    
+    response = llm.predict(prompt)
+    return response
 
 # Streamlit UI
 st.title("Gradient Cyber Q&A System")
@@ -162,10 +117,7 @@ with st.sidebar:
         if st.button("Process and Upsert to Pinecone"):
             with st.spinner("Processing PDF and upserting to Pinecone..."):
                 num_chunks = process_and_upsert_pdf(uploaded_file)
-                if num_chunks > 0:
-                    st.success(f"Processed and upserted {num_chunks} chunks to Pinecone.")
-                else:
-                    st.error("Failed to process and upsert PDF.")
+                st.success(f"Processed and upserted {num_chunks} chunks to Pinecone.")
     
     st.header("Controls")
     if st.button("Toggle Conversation History"):
@@ -179,20 +131,20 @@ with st.sidebar:
     
     if st.session_state.show_history:
         st.subheader("Conversation History")
-        history_text = "\n\n".join([f"Q: {msg['content']}\nA: {msg['response']}" for msg in st.session_state.messages])
-        st.text_area("Full Conversation", value=history_text, height=300)
+        for i, message in enumerate(st.session_state.messages):
+            with st.container():
+                st.markdown(f"**{message['role'].capitalize()}:**")
+                st.text_area(f"Message {i+1}", value=message['content'], height=100, disabled=True)
+                st.markdown("---")
 
 # Main content area
 for message in st.session_state.messages:
-    with st.chat_message("human"):
-        st.markdown(message['content'])
-    with st.chat_message("assistant"):
-        st.markdown(message['response'])
-        if message.get('source'):
-            st.info(f"Source: {message['source']['source']}, Chunk ID: {message['source']['chunk_id']}")
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
 
 query = st.chat_input("Ask a question about the uploaded documents:")
 if query:
+    st.session_state.messages.append({"role": "human", "content": query})
     with st.chat_message("human"):
         st.markdown(query)
     
@@ -210,12 +162,14 @@ if query:
             )
         
         relevant_docs = get_relevant_documents(query, retriever)
-        response, source = generate_response(query, relevant_docs)
         
-        message_placeholder.markdown(response)
-        if source:
-            st.info(f"Source: {source['source']}, Chunk ID: {source['chunk_id']}")
+        if not relevant_docs:
+            response = "I'm sorry, but I don't have enough information in the database to answer that question."
+            message_placeholder.warning(response)
+        else:
+            response = generate_response(query, relevant_docs)
+            message_placeholder.markdown(response)
     
-    st.session_state.messages.append({"content": query, "response": response, "source": source})
+    st.session_state.messages.append({"role": "assistant", "content": response})
 
 st.write("Note: Make sure you have set up your Pinecone index and OpenAI API key correctly.")
