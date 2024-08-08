@@ -11,6 +11,11 @@ from PyPDF2 import PdfReader
 import os
 from dotenv import load_dotenv
 from langsmith import Client
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
@@ -26,63 +31,106 @@ PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 if not PINECONE_API_KEY or not OPENAI_API_KEY:
+    logger.error("Missing API keys")
     st.error("Missing API keys. Please set PINECONE_API_KEY and OPENAI_API_KEY in your .env file.")
     st.stop()
 
-pc = Pinecone(api_key=PINECONE_API_KEY)
-index_name = "gradientcyber"
+try:
+    pc = Pinecone(api_key=PINECONE_API_KEY)
+    index_name = "gradientcyber"
+    logger.debug(f"Successfully connected to Pinecone")
+except Exception as e:
+    logger.exception("Error connecting to Pinecone:")
+    st.error(f"Error connecting to Pinecone: {str(e)}")
+    st.stop()
 
 def ensure_pinecone_index(index_name, dimension=1536):
-    if index_name not in pc.list_indexes():
-        pc.create_index(
-            name=index_name,
-            dimension=dimension,
-            metric='cosine'
-        )
-        print(f"Created new Pinecone index: {index_name}")
-    else:
-        print(f"Pinecone index {index_name} already exists")
+    try:
+        if index_name not in pc.list_indexes():
+            pc.create_index(
+                name=index_name,
+                dimension=dimension,
+                metric='cosine'
+            )
+            logger.debug(f"Created new Pinecone index: {index_name}")
+        else:
+            logger.debug(f"Pinecone index {index_name} already exists")
+    except Exception as e:
+        logger.exception(f"Error ensuring Pinecone index {index_name}:")
+        st.error(f"Error with Pinecone index: {str(e)}")
+        st.stop()
 
 # Ensure Pinecone index exists
 ensure_pinecone_index(index_name)
 
-# Initialize LangChain components
-embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
-vectorstore = PineconeVectorStore(pinecone_api_key=PINECONE_API_KEY, index_name=index_name, embedding=embeddings)
+try:
+    # Initialize LangChain components
+    embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
+    vectorstore = PineconeVectorStore(pinecone_api_key=PINECONE_API_KEY, index_name=index_name, embedding=embeddings)
+    logger.debug("Successfully initialized OpenAI embeddings and Pinecone vector store")
+except Exception as e:
+    logger.exception("Error initializing OpenAI embeddings or Pinecone vector store:")
+    st.error(f"Error initializing components: {str(e)}")
+    st.stop()
 
-# Initialize LangSmith client
-client = Client(api_key=os.environ["LANGCHAIN_API_KEY"])
-
-# Initialize LangChain tracer and callback manager
-tracer = LangChainTracer(project_name="gradient_cyber_customer_bot", client=client)
-callback_manager = CallbackManager([tracer])
-
-llm = ChatOpenAI(
-    openai_api_key=OPENAI_API_KEY,
-    model_name="gpt-4",
-    temperature=0,
-    callback_manager=callback_manager
-)
+try:
+    # Initialize LangSmith client
+    client = Client(api_key=os.environ["LANGCHAIN_API_KEY"])
+    
+    # Initialize LangChain tracer and callback manager
+    tracer = LangChainTracer(project_name="gradient_cyber_customer_bot", client=client)
+    callback_manager = CallbackManager([tracer])
+    
+    llm = ChatOpenAI(
+        openai_api_key=OPENAI_API_KEY,
+        model_name="gpt-4",
+        temperature=0,
+        callback_manager=callback_manager
+    )
+    logger.debug("Successfully initialized LangSmith client and LLM")
+except Exception as e:
+    logger.exception("Error initializing LangSmith client or LLM:")
+    st.error(f"Error initializing LangSmith or LLM: {str(e)}")
+    st.stop()
 
 @st.cache_data
 def get_embedding(_openai_api_key, text):
-    embeddings = OpenAIEmbeddings(openai_api_key=_openai_api_key)
-    return embeddings.embed_query(text)
+    try:
+        embeddings = OpenAIEmbeddings(openai_api_key=_openai_api_key)
+        return embeddings.embed_query(text)
+    except Exception as e:
+        logger.exception("Error getting embedding:")
+        st.error(f"Error getting embedding: {str(e)}")
+        return None
 
 def extract_text_from_pdf(pdf_file):
-    pdf_reader = PdfReader(pdf_file)
-    text = ""
-    for page in pdf_reader.pages:
-        text += page.extract_text() + " "
-    return text
+    try:
+        pdf_reader = PdfReader(pdf_file)
+        text = ""
+        for page in pdf_reader.pages:
+            text += page.extract_text() + " "
+        return text
+    except Exception as e:
+        logger.exception("Error extracting text from PDF:")
+        st.error(f"Error extracting text from PDF: {str(e)}")
+        return None
 
 def process_and_upsert_pdf(pdf_file):
     text = extract_text_from_pdf(pdf_file)
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-    chunks = text_splitter.split_text(text)
+    if text is None:
+        return 0
     
-    vectorstore.add_texts(chunks, metadatas=[{"source": pdf_file.name} for _ in chunks])
-    return len(chunks)
+    try:
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+        chunks = text_splitter.split_text(text)
+        
+        vectorstore.add_texts(chunks, metadatas=[{"source": pdf_file.name} for _ in chunks])
+        logger.debug(f"Successfully processed and upserted {len(chunks)} chunks")
+        return len(chunks)
+    except Exception as e:
+        logger.exception("Error processing and upserting PDF:")
+        st.error(f"Error processing and upserting PDF: {str(e)}")
+        return 0
 
 # Streamlit UI
 st.sidebar.markdown("""
@@ -105,11 +153,11 @@ if uploaded_file is not None:
     
     if st.sidebar.button("Process and Upsert to Pinecone"):
         with st.sidebar.spinner("Processing PDF and upserting to Pinecone..."):
-            try:
-                num_chunks = process_and_upsert_pdf(uploaded_file)
+            num_chunks = process_and_upsert_pdf(uploaded_file)
+            if num_chunks > 0:
                 st.sidebar.success(f"Processed and upserted {num_chunks} chunks to Pinecone.")
-            except Exception as e:
-                st.sidebar.error(f"An error occurred while processing the PDF: {str(e)}")
+            else:
+                st.sidebar.error("Failed to process and upsert PDF.")
 
 st.title("Gradient Cyber Q&A System")
 
@@ -147,9 +195,10 @@ if query:
             # Generate the response
             result = qa_chain({"question": query, "chat_history": [(msg["role"], msg["content"]) for msg in st.session_state.messages]})
             full_response = result["answer"]
-
+            logger.debug("Successfully generated response")
             message_placeholder.markdown(full_response)
         except Exception as e:
+            logger.exception("Error generating response:")
             error_message = f"An error occurred while generating the response: {str(e)}"
             message_placeholder.error(error_message)
             full_response = error_message
@@ -159,6 +208,7 @@ if query:
 st.sidebar.title("Conversation History")
 if st.sidebar.button("Clear History"):
     st.session_state.messages = []
+    logger.debug("Cleared conversation history")
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("v1.0.0 | [GitHub](https://github.com/yourusername/gradient-cyber-qa)")
@@ -166,4 +216,4 @@ st.sidebar.markdown("v1.0.0 | [GitHub](https://github.com/yourusername/gradient-
 st.markdown("---")
 st.markdown("Need help? Check out the [documentation](https://your-docs-link.com) or [report an issue](https://github.com/yourusername/gradient-cyber-qa/issues).")
 
-st.write("Note: Make sure you have set up your Pinecone index and OpenAI API key correctly.")
+logger.debug("App finished running")
