@@ -1,10 +1,10 @@
-langchain
-langchain-openai
-langchain-pinecone
-openai
-pinecone-client
-PyPDF2
-python-dotenv
-streamlit
-langsmith
-uuid
+streamlit>=1.19.0
+langchain>=0.0.145  # This covers the core LangChain components
+langchain-openai  # Handles specific integrations with OpenAI, version can be added if necessary
+langchain-pinecone  # Handles specific integrations with Pinecone, version can be added if necessary
+openai>=0.27.0  # Ensure OpenAI's library is included
+pinecone-client>=2.2.1  # Ensure Pinecone client is correctly installed
+PyPDF2>=3.0.1  # Library for PDF processing
+python-dotenv>=0.21.0  # For handling environment variables
+langsmith>=0.0.1  # Ensure this is the correct package name, version can be added if necessary
+uuid  # uuid is part of the Python standard library, so this is not typically needed
