@@ -50,8 +50,8 @@ try:
 
     llm = ChatOpenAI(
         openai_api_key=OPENAI_API_KEY,
-        model_name="gpt-4o",
-        temperature=0.3,
+        model_name="gpt-3.5-turbo",  # Changed from gpt-4 to gpt-3.5-turbo
+        temperature=0,
         callback_manager=callback_manager
     )
 except Exception as e:
@@ -123,10 +123,15 @@ if query:
         message_placeholder = st.empty()
         full_response = ""
         try:
-            memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True, output_key="answer")
-            
-            retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 20})
-            
+            memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+            retriever = vectorstore.as_retriever(search_kwargs={"k": 50})
+            if "doc_ids" in st.session_state and st.session_state.doc_ids:
+                retriever = vectorstore.as_retriever(
+                    search_kwargs={
+                        "filter": {"doc_id": {"$in": st.session_state.doc_ids}},
+                        "k": 50
+                    }
+                )
             qa_chain = ConversationalRetrievalChain.from_llm(
                 llm=llm,
                 retriever=retriever,
@@ -137,25 +142,15 @@ if query:
             result = qa_chain({"question": query, "chat_history": [(msg["role"], msg["content"]) for msg in st.session_state.messages]})
             full_response = result["answer"]
             
-            # Store query for later use
-            st.session_state.last_query = query
-            
-            # Store retrieved documents for showing sources later
-            st.session_state.relevant_docs = result["source_documents"]
-            
+            # Add information about source documents
+            source_docs = result['source_documents']
+            if source_docs:
+                full_response += "\n\nSources:\n"
+                for i, doc in enumerate(source_docs):
+                    full_response += f"{i+1}. {doc.metadata.get('source', 'Unknown source')}\n"
+                    full_response += f"   Content: {doc.page_content[:200]}...\n\n"  # Display a snippet of the content
         except Exception as e:
             full_response = f"An error occurred: {str(e)}"
         
         message_placeholder.markdown(full_response)
-        
-        # Add a button to show sources
-        if st.button("Show Sources", key=f"sources_{len(st.session_state.messages)}"):
-            with st.spinner("Retrieving all relevant chunks..."):
-                sources_text = "### All Relevant Chunks:\n\n"
-                for i, doc in enumerate(st.session_state.relevant_docs):
-                    sources_text += f"**Chunk {i+1}**\n"
-                    sources_text += f"Source: {doc.metadata.get('source', 'Unknown source')}\n"
-                    sources_text += f"Content: {doc.page_content}\n\n"
-                st.markdown(sources_text)
-        
     st.session_state.messages.append({"role": "assistant", "content": full_response})
