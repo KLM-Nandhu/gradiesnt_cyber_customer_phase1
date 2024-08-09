@@ -82,6 +82,8 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 if "show_history" not in st.session_state:
     st.session_state.show_history = False
+if "show_sources" not in st.session_state:
+    st.session_state.show_sources = False
 
 # Sidebar
 with st.sidebar:
@@ -141,16 +143,21 @@ if query:
             )
             result = qa_chain({"question": query, "chat_history": [(msg["role"], msg["content"]) for msg in st.session_state.messages]})
             full_response = result["answer"]
-            
-            # Add information about source documents
-            source_docs = result['source_documents']
-            if source_docs:
-                full_response += "\n\nSources:\n"
-                for i, doc in enumerate(source_docs):
-                    full_response += f"{i+1}. {doc.metadata.get('source', 'Unknown source')}\n"
-                    full_response += f"   Content: {doc.page_content[:200]}...\n\n"  # Display a snippet of the content
+
+            # Add a button to show full sources
+            if result['source_documents']:
+                if st.button("Show Full Sources"):
+                    st.session_state.show_sources = True
+
+                if st.session_state.show_sources:
+                    full_response += "\n\nSources:\n"
+                    for i, doc in enumerate(result['source_documents']):
+                        full_response += f"{i+1}. {doc.metadata.get('source', 'Unknown source')}\n"
+                        full_response += f"   Content: {doc.page_content[:200]}...\n\n"  # Display a snippet of the content
+                else:
+                    full_response += "\n\nPartial sources available. Click 'Show Full Sources' to view all."
         except Exception as e:
             full_response = f"An error occurred: {str(e)}"
-        
+
         message_placeholder.markdown(full_response)
     st.session_state.messages.append({"role": "assistant", "content": full_response})
