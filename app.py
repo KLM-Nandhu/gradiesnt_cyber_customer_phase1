@@ -12,7 +12,6 @@ import os
 from langsmith import Client
 from dotenv import load_dotenv
 import uuid
-import openai
 
 # Load environment variables
 load_dotenv()
@@ -41,29 +40,80 @@ index_name = "gradientcyber"
 try:
     embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
     vectorstore = PineconeVectorStore(pinecone_api_key=PINECONE_API_KEY, index_name=index_name, embedding=embeddings)
-except Exception as e:
-    st.error(f"Error initializing LangChain components: {str(e)}")
-    st.stop()
 
-# Initialize LangSmith client
-client = Client(api_key=LANGCHAIN_API_KEY)
+    # Initialize LangSmith client
+    client = Client(api_key=LANGCHAIN_API_KEY)
 
-# Initialize LangChain tracer and callback manager
-tracer = LangChainTracer(project_name="gradient_cyber_customer_bot", client=client)
-callback_manager = CallbackManager([tracer])
+    # Initialize LangChain tracer and callback manager
+    tracer = LangChainTracer(project_name="gradient_cyber_customer_bot", client=client)
+    callback_manager = CallbackManager([tracer])
 
-try:
     llm = ChatOpenAI(
         openai_api_key=OPENAI_API_KEY,
-        model_name="gpt-4",
+        model_name="gpt-3.5-turbo",  # Changed from gpt-4 to gpt-3.5-turbo
         temperature=0,
         callback_manager=callback_manager
     )
 except Exception as e:
-    st.error(f"Error initializing ChatOpenAI: {str(e)}")
+    st.error(f"Error initializing components: {str(e)}")
     st.stop()
 
-# ... [rest of the code remains the same until the query processing part]
+def extract_text_from_pdf(pdf_file):
+    pdf_reader = PdfReader(pdf_file)
+    text = ""
+    for page in pdf_reader.pages:
+        text += page.extract_text() + " "
+    return text
+
+def process_and_upsert_pdf(pdf_file):
+    text = extract_text_from_pdf(pdf_file)
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+    chunks = text_splitter.split_text(text)
+    doc_id = str(uuid.uuid4())
+    metadatas = [{"source": pdf_file.name, "doc_id": doc_id} for _ in chunks]
+    vectorstore.add_texts(chunks, metadatas=metadatas)
+    if "doc_ids" not in st.session_state:
+        st.session_state.doc_ids = []
+    st.session_state.doc_ids.append(doc_id)
+    return len(chunks)
+
+# Initialize session state
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+if "show_history" not in st.session_state:
+    st.session_state.show_history = False
+
+# Sidebar
+with st.sidebar:
+    st.title("Gradient Cyber")
+    st.header("PDF Uploader")
+    uploaded_file = st.file_uploader("Choose a PDF file", type="pdf")
+    if uploaded_file:
+        st.write("File uploaded successfully!")
+        if st.button("Process and Upsert to Pinecone"):
+            with st.spinner("Processing PDF and upserting to Pinecone..."):
+                num_chunks = process_and_upsert_pdf(uploaded_file)
+                st.success(f"Processed and upserted {num_chunks} chunks to Pinecone.")
+    st.header("Controls")
+    if st.button("Toggle Conversation History"):
+        st.session_state.show_history = not st.session_state.show_history
+    if st.button("Clear History"):
+        st.session_state.messages = []
+        if "doc_ids" in st.session_state:
+            st.session_state.doc_ids = []
+        st.success("Conversation history and document references cleared.")
+    if st.session_state.show_history:
+        st.subheader("Conversation History")
+        for message in st.session_state.messages:
+            st.text(f"{message['role']}: {message['content'][:50]}...")
+
+# Main content area
+st.title("Gradient Cyber Q&A System")
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+
+query = st.chat_input("Ask a question about the uploaded documents:")
 
 if query:
     st.session_state.messages.append({"role": "human", "content": query})
@@ -86,7 +136,6 @@ if query:
                 llm=llm,
                 retriever=retriever,
                 memory=memory,
-                callback_manager=callback_manager,
                 return_source_documents=True,
                 verbose=True
             )
@@ -100,8 +149,6 @@ if query:
                 for i, doc in enumerate(source_docs):
                     full_response += f"{i+1}. {doc.metadata.get('source', 'Unknown source')}\n"
                     full_response += f"   Content: {doc.page_content[:200]}...\n\n"  # Display a snippet of the content
-        except openai.BadRequestError as e:
-            full_response = f"Error: {str(e)}. Please try rephrasing your question or check your API key."
         except Exception as e:
             full_response = f"An error occurred: {str(e)}"
         
