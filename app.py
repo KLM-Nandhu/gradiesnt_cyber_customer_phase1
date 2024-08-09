@@ -126,7 +126,7 @@ if query:
         try:
             memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True, output_key="answer")
             retriever = vectorstore.as_retriever(search_kwargs={"k": 50})
-            if "doc_ids" in st.session_state and st.session_state.doc_ids:
+            if "doc_ids" in st.session_state 
                 retriever = vectorstore.as_retriever(
                     search_kwargs={
                         "filter": {"doc_id": {"$in": st.session_state.doc_ids}},
