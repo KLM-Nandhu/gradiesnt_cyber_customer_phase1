@@ -1,10 +1,11 @@
 import streamlit as st
-from langchain_openai import OpenAIEmbeddings, ChatOpenAI
-from langchain_pinecone import PineconeVectorStore
+from langchain.embeddings import OpenAIEmbeddings
+from langchain.chat_models import ChatOpenAI
+from langchain.vectorstores import PineconeVectorStore
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
-from langchain.callbacks.tracers import LangChainTracer
+from langchain.callbacks import LangChainTracer
 from langchain.callbacks.manager import CallbackManager
 from pinecone import Pinecone
 from PyPDF2 import PdfReader
