@@ -1,11 +1,10 @@
 import streamlit as st
-from langchain_openai import OpenAIEmbeddings, ChatOpenAI
-from langchain_pinecone import PineconeVectorStore
+from langchain.llms import ChatOpenAI
+from langchain.vectorstores import Pinecone
+from langchain.embeddings import OpenAIEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
-from langchain.callbacks.tracers import LangChainTracer
-from langchain.callbacks.manager import CallbackManager
 from pinecone import Pinecone
 from PyPDF2 import PdfReader
 import os
@@ -38,7 +37,7 @@ index_name = "gradientcyber"
 
 # Initialize LangChain components
 embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
-vectorstore = PineconeVectorStore(pinecone_api_key=PINECONE_API_KEY, index_name=index_name, embedding=embeddings)
+vectorstore = Pinecone(api_key=PINECONE_API_KEY, index_name=index_name, embedding=embeddings)
 
 # Initialize LangSmith client
 client = Client(api_key=LANGCHAIN_API_KEY)
@@ -114,36 +113,51 @@ if query:
     st.session_state.messages.append({"role": "human", "content": query})
     with st.chat_message("human"):
         st.markdown(query)
-    with st.chat_message("assistant"):
-        message_placeholder = st.empty()
-        full_response = ""
-        memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
-        retriever = vectorstore.as_retriever()
-        if "doc_ids" in st.session_state and st.session_state.doc_ids:
-            retriever = vectorstore.as_retriever(
-                search_kwargs={
-                    "filter": {"doc_id": {"$in": st.session_state.doc_ids}},
-                    "k": 20  # Increase the number of results returned
-                }
-            )
-        qa_chain = ConversationalRetrievalChain.from_llm(
-            llm=llm,
-            retriever=retriever,
-            memory=memory,
-            callback_manager=callback_manager
+    
+    message_placeholder = st.empty()
+    full_response = ""
+    memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+    retriever = vectorstore.as_retriever()
+
+    if "doc_ids" in st.session_state and st.session_state.doc_ids:
+        retriever = vectorstore.as_retriever(
+            search_kwargs={
+                "filter": {"doc_id": {"$in": st.session_state.doc_ids}},
+                "k": 50  # Increase the number of results returned
+            }
         )
-        result = qa_chain({"question": query, "chat_history": [(msg["role"], msg["content"]) for msg in st.session_state.messages]})
-        full_response = result["answer"]
+    
+    # Create a list to store all responses for multiple LLM calls
+    all_responses = []
+    
+    # Generate dynamic sub-queries based on the original query
+    sub_queries = [
+        query,  # The original query
+        f"What specific details are mentioned in relation to '{query}'?",
+        f"Are there any actions associated with '{query}'?",
+        f"Which sections of the document contain information about '{query}'?",
+        f"Provide examples or case studies related to '{query}'.",
+        f"What are the consequences or outcomes related to '{query}'?",
+        f"Can you list all entities involved in '{query}'?",
+        f"Is there any additional context or background information on '{query}'?"
+    ]
+    
+    # Run the LLM multiple times with these sub-queries
+    qa_chain = ConversationalRetrievalChain.from_llm(
+        llm=llm,
+        retriever=retriever,
+        memory=memory,
+        callback_manager=callback_manager
+    )
+    
+    for sub_query in sub_queries:
+        result = qa_chain({"question": sub_query, "chat_history": [(msg["role"], msg["content"]) for msg in st.session_state.messages]})
+        all_responses.append(result["answer"])
 
-        # Ensure comprehensive response
-        if "Dan" in query and "customers" in query.lower():
-            # Post-process to ensure all mentions are captured
-            additional_mentions = ["Elementis", "Miller Fabrication", "Stratosphere Quality", "D9 - Partner",
-                                   "Ernst Concrete", "CIT", "Hobart", "RB Jergens", "Jadex", "Healthcare Highways",
-                                   "Omega Healthcare", "JV Manufacturing", "CNB Bank", "Celebration Church",
-                                   "Southern States Packaging", "Newpark (Liquid Networks)", "Peoples Savings and Loan",
-                                   "Grapevine-Colleyville ISD", "Dacotah Paper"]
-            full_response += "\n\nAdditional customers Dan talked with: " + ", ".join(additional_mentions)
+    # Combine all responses
+    full_response = "\n\n".join(all_responses)
 
-        message_placeholder.markdown(full_response)
+    # Display the combined response
+    message_placeholder.markdown(full_response)
+    
     st.session_state.messages.append({"role": "assistant", "content": full_response})
