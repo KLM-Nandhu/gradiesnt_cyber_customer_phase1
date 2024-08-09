@@ -1,10 +1,11 @@
 import streamlit as st
-from langchain.llms import ChatOpenAI
-from langchain.vectorstores import Pinecone
-from langchain.embeddings import OpenAIEmbeddings
+from langchain_openai import OpenAIEmbeddings, ChatOpenAI
+from langchain_pinecone import PineconeVectorStore
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
+from langchain.callbacks.tracers import LangChainTracer
+from langchain.callbacks.manager import CallbackManager
 from pinecone import Pinecone
 from PyPDF2 import PdfReader
 import os
@@ -37,7 +38,7 @@ index_name = "gradientcyber"
 
 # Initialize LangChain components
 embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
-vectorstore = Pinecone(api_key=PINECONE_API_KEY, index_name=index_name, embedding=embeddings)
+vectorstore = PineconeVectorStore(pinecone_api_key=PINECONE_API_KEY, index_name=index_name, embedding=embeddings)
 
 # Initialize LangSmith client
 client = Client(api_key=LANGCHAIN_API_KEY)
@@ -48,7 +49,7 @@ callback_manager = CallbackManager([tracer])
 
 llm = ChatOpenAI(
     openai_api_key=OPENAI_API_KEY,
-    model_name="gpt-4o",
+    model_name="gpt-4",
     temperature=0,
     callback_manager=callback_manager
 )
@@ -109,55 +110,41 @@ for message in st.session_state.messages:
         st.markdown(message["content"])
 
 query = st.chat_input("Ask a question about the uploaded documents:")
+
 if query:
     st.session_state.messages.append({"role": "human", "content": query})
     with st.chat_message("human"):
         st.markdown(query)
-    
-    message_placeholder = st.empty()
-    full_response = ""
-    memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
-    retriever = vectorstore.as_retriever()
-
-    if "doc_ids" in st.session_state and st.session_state.doc_ids:
-        retriever = vectorstore.as_retriever(
-            search_kwargs={
-                "filter": {"doc_id": {"$in": st.session_state.doc_ids}},
-                "k": 50  # Increase the number of results returned
-            }
+    with st.chat_message("assistant"):
+        message_placeholder = st.empty()
+        full_response = ""
+        memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+        retriever = vectorstore.as_retriever(search_kwargs={"k": 50})  # Increased to 50
+        if "doc_ids" in st.session_state and st.session_state.doc_ids:
+            retriever = vectorstore.as_retriever(
+                search_kwargs={
+                    "filter": {"doc_id": {"$in": st.session_state.doc_ids}},
+                    "k": 50  # Increased to 50
+                }
+            )
+        qa_chain = ConversationalRetrievalChain.from_llm(
+            llm=llm,
+            retriever=retriever,
+            memory=memory,
+            callback_manager=callback_manager,
+            return_source_documents=True,
+            verbose=True
         )
-    
-    # Create a list to store all responses for multiple LLM calls
-    all_responses = []
-    
-    # Generate dynamic sub-queries based on the original query
-    sub_queries = [
-        query,  # The original query
-        f"What specific details are mentioned in relation to '{query}'?",
-        f"Are there any actions associated with '{query}'?",
-        f"Which sections of the document contain information about '{query}'?",
-        f"Provide examples or case studies related to '{query}'.",
-        f"What are the consequences or outcomes related to '{query}'?",
-        f"Can you list all entities involved in '{query}'?",
-        f"Is there any additional context or background information on '{query}'?"
-    ]
-    
-    # Run the LLM multiple times with these sub-queries
-    qa_chain = ConversationalRetrievalChain.from_llm(
-        llm=llm,
-        retriever=retriever,
-        memory=memory,
-        callback_manager=callback_manager
-    )
-    
-    for sub_query in sub_queries:
-        result = qa_chain({"question": sub_query, "chat_history": [(msg["role"], msg["content"]) for msg in st.session_state.messages]})
-        all_responses.append(result["answer"])
-
-    # Combine all responses
-    full_response = "\n\n".join(all_responses)
-
-    # Display the combined response
-    message_placeholder.markdown(full_response)
-    
+        result = qa_chain({"question": query, "chat_history": [(msg["role"], msg["content"]) for msg in st.session_state.messages]})
+        full_response = result["answer"]
+        
+        # Add information about source documents
+        source_docs = result['source_documents']
+        if source_docs:
+            full_response += "\n\nSources:\n"
+            for i, doc in enumerate(source_docs):
+                full_response += f"{i+1}. {doc.metadata.get('source', 'Unknown source')}\n"
+                full_response += f"   Content: {doc.page_content[:200]}...\n\n"  # Display a snippet of the content
+        
+        message_placeholder.markdown(full_response)
     st.session_state.messages.append({"role": "assistant", "content": full_response})
