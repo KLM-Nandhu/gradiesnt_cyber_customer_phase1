@@ -125,12 +125,12 @@ if query:
         full_response = ""
         try:
             memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True, output_key="answer")
-            retriever = vectorstore.as_retriever(search_kwargs={"k": 10})
+            retriever = vectorstore.as_retriever(search_kwargs={"k": 50})
             if "doc_ids" in st.session_state and st.session_state.doc_ids:
                 retriever = vectorstore.as_retriever(
                     search_kwargs={
                         "filter": {"doc_id": {"$in": st.session_state.doc_ids}},
-                        "k": 10
+                        "k": 50
                     }
                 )
             qa_chain = ConversationalRetrievalChain.from_llm(
