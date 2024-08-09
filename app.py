@@ -51,7 +51,7 @@ try:
     llm = ChatOpenAI(
         openai_api_key=OPENAI_API_KEY,
         model_name="gpt-3.5-turbo",
-        temperature=0,
+        temperature=0.3,
         callback_manager=callback_manager
     )
 except Exception as e:
@@ -124,14 +124,16 @@ if query:
         full_response = ""
         try:
             memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True, output_key="answer")
-            retriever = vectorstore.as_retriever(search_kwargs={"k": 50})
-            if "doc_ids" in st.session_state and st.session_state.doc_ids:
-                retriever = vectorstore.as_retriever(
-                    search_kwargs={
-                        "filter": {"doc_id": {"$in": st.session_state.doc_ids}},
-                        "k": 50
-                    }
-                )
+            
+            # Create a function to dynamically determine the number of relevant chunks
+            def get_relevant_documents(query):
+                # You can implement more sophisticated logic here
+                # For now, we'll retrieve a large number of documents and let the LLM filter
+                docs = vectorstore.similarity_search(query, k=100)
+                return docs
+
+            retriever = vectorstore.as_retriever(search_type="mmr", search_kwargs={"fetch_k": 100, "k": 20})
+            
             qa_chain = ConversationalRetrievalChain.from_llm(
                 llm=llm,
                 retriever=retriever,
@@ -142,15 +144,20 @@ if query:
             result = qa_chain({"question": query, "chat_history": [(msg["role"], msg["content"]) for msg in st.session_state.messages]})
             full_response = result["answer"]
             
-            # Add information about source documents
-            source_docs = result['source_documents']
-            if source_docs:
-                full_response += "\n\nSources:\n"
-                for i, doc in enumerate(source_docs):
-                    full_response += f"{i+1}. {doc.metadata.get('source', 'Unknown source')}\n"
-                    full_response += f"   Content: {doc.page_content[:200]}...\n\n"  # Display a snippet of the content
+            # Store source documents in session state
+            st.session_state.source_docs = result['source_documents']
+            
         except Exception as e:
             full_response = f"An error occurred: {str(e)}"
         
         message_placeholder.markdown(full_response)
+        
+        # Add a button to show sources
+        if st.button("Show Sources", key=f"sources_{len(st.session_state.messages)}"):
+            sources_text = ""
+            for i, doc in enumerate(st.session_state.source_docs):
+                sources_text += f"{i+1}. {doc.metadata.get('source', 'Unknown source')}\n"
+                sources_text += f"   Content: {doc.page_content[:200]}...\n\n"
+            st.markdown(sources_text)
+        
     st.session_state.messages.append({"role": "assistant", "content": full_response})
