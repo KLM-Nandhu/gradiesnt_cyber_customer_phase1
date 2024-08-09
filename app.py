@@ -50,7 +50,7 @@ try:
 
     llm = ChatOpenAI(
         openai_api_key=OPENAI_API_KEY,
-        model_name="gpt-3.5-turbo",  # Changed from gpt-4 to gpt-3.5-turbo
+        model_name="gpt-3.5-turbo",
         temperature=0,
         callback_manager=callback_manager
     )
@@ -123,7 +123,7 @@ if query:
         message_placeholder = st.empty()
         full_response = ""
         try:
-            memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+            memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True, output_key="answer")
             retriever = vectorstore.as_retriever(search_kwargs={"k": 50})
             if "doc_ids" in st.session_state and st.session_state.doc_ids:
                 retriever = vectorstore.as_retriever(
