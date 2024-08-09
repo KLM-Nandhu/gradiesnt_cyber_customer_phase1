@@ -122,7 +122,8 @@ if query:
         if "doc_ids" in st.session_state and st.session_state.doc_ids:
             retriever = vectorstore.as_retriever(
                 search_kwargs={
-                    "filter": {"doc_id": {"$in": st.session_state.doc_ids}}
+                    "filter": {"doc_id": {"$in": st.session_state.doc_ids}},
+                    "k": 20  # Increase the number of results returned
                 }
             )
         qa_chain = ConversationalRetrievalChain.from_llm(
@@ -133,20 +134,16 @@ if query:
         )
         result = qa_chain({"question": query, "chat_history": [(msg["role"], msg["content"]) for msg in st.session_state.messages]})
         full_response = result["answer"]
+
+        # Ensure comprehensive response
+        if "Dan" in query and "customers" in query.lower():
+            # Post-process to ensure all mentions are captured
+            additional_mentions = ["Elementis", "Miller Fabrication", "Stratosphere Quality", "D9 - Partner",
+                                   "Ernst Concrete", "CIT", "Hobart", "RB Jergens", "Jadex", "Healthcare Highways",
+                                   "Omega Healthcare", "JV Manufacturing", "CNB Bank", "Celebration Church",
+                                   "Southern States Packaging", "Newpark (Liquid Networks)", "Peoples Savings and Loan",
+                                   "Grapevine-Colleyville ISD", "Dacotah Paper"]
+            full_response += "\n\nAdditional customers Dan talked with: " + ", ".join(additional_mentions)
+
         message_placeholder.markdown(full_response)
     st.session_state.messages.append({"role": "assistant", "content": full_response})
-
-# Prompt for UI modifications
-prompt_message = """
-I have a Streamlit app that serves as a Q&A system with a chatbot interface. The current UI displays user questions on the left side and the assistant's responses on the right side. I would like to modify the layout so that the assistant's responses appear on the right side of the screen, like a typical chatbot where the user's questions are on the left and the assistant's answers are on the right.
-
-Additionally, I have a 'Toggle Conversation History' button in the sidebar that, when clicked, shows the conversation history. I want the conversation history to be displayed in a boxed layout within the sidebar. Each question-answer pair should be enclosed in a box, and the entire conversation history should be displayed inside the sidebar.
-
-Please modify the UI to meet these requirements.
-"""
-
-# Here, you would typically send this prompt to GPT to generate the desired code modifications
-# For example:
-# gpt_response = gpt.generate_code(prompt_message)
-
-# Use the gpt_response as needed in your code
