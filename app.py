@@ -125,14 +125,7 @@ if query:
         try:
             memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True, output_key="answer")
             
-            # Create a function to dynamically determine the number of relevant chunks
-            def get_relevant_documents(query):
-                # You can implement more sophisticated logic here
-                # For now, we'll retrieve a large number of documents and let the LLM filter
-                docs = vectorstore.similarity_search(query, k=100)
-                return docs
-
-            retriever = vectorstore.as_retriever(search_type="mmr", search_kwargs={"fetch_k": 100, "k": 20})
+            retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 20})
             
             qa_chain = ConversationalRetrievalChain.from_llm(
                 llm=llm,
@@ -144,8 +137,11 @@ if query:
             result = qa_chain({"question": query, "chat_history": [(msg["role"], msg["content"]) for msg in st.session_state.messages]})
             full_response = result["answer"]
             
-            # Store source documents in session state
-            st.session_state.source_docs = result['source_documents']
+            # Store query for later use
+            st.session_state.last_query = query
+            
+            # Store retrieved documents for showing sources later
+            st.session_state.relevant_docs = result["source_documents"]
             
         except Exception as e:
             full_response = f"An error occurred: {str(e)}"
@@ -154,10 +150,12 @@ if query:
         
         # Add a button to show sources
         if st.button("Show Sources", key=f"sources_{len(st.session_state.messages)}"):
-            sources_text = ""
-            for i, doc in enumerate(st.session_state.source_docs):
-                sources_text += f"{i+1}. {doc.metadata.get('source', 'Unknown source')}\n"
-                sources_text += f"   Content: {doc.page_content[:200]}...\n\n"
-            st.markdown(sources_text)
+            with st.spinner("Retrieving all relevant chunks..."):
+                sources_text = "### All Relevant Chunks:\n\n"
+                for i, doc in enumerate(st.session_state.relevant_docs):
+                    sources_text += f"**Chunk {i+1}**\n"
+                    sources_text += f"Source: {doc.metadata.get('source', 'Unknown source')}\n"
+                    sources_text += f"Content: {doc.page_content}\n\n"
+                st.markdown(sources_text)
         
     st.session_state.messages.append({"role": "assistant", "content": full_response})
