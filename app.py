@@ -160,7 +160,7 @@ if 'chat_history' not in st.session_state:
 # Streamlit app title
 st.title("🤖 Gradient Cyber Bot")
 
-# Initialize Pinecone and OpenAI with environment variables
+# Initialize Pinecone and OpenAI with hardcoded values
 PINECONE_API_KEY = ["PINECONE_API_KEY"]
 OPENAI_API_KEY = ["OPENAI_API_KEY"]
 INDEX_NAME = "gradientcyber"
@@ -179,7 +179,7 @@ except Exception as e:
 # Initialize LangChain components
 embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
 vectorstore = LangchainPinecone(index, embeddings.embed_query, "text")
-llm = ChatOpenAI(temperature=0.3, model_name="gpt-4", openai_api_key=OPENAI_API_KEY)
+llm = ChatOpenAI(temperature=0.3, model_name="gpt-4o", openai_api_key=OPENAI_API_KEY)
 qa_chain = RetrievalQA.from_chain_type(
     llm=llm,
     chain_type="stuff",
@@ -243,7 +243,7 @@ def format_answer(answer, sources):
     Sources: {', '.join(sources)}
     """
     response = openai_client.chat.completions.create(
-        model="gpt-4",
+        model="gpt-4o",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3
     )
@@ -273,7 +273,7 @@ def format_conversation_history(history):
     {history}
     """
     response = openai_client.chat.completions.create(
-        model="gpt-4",
+        model="gpt-4o",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3
     )
