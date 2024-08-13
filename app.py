@@ -179,11 +179,15 @@ except Exception as e:
 # Initialize LangChain components
 embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
 vectorstore = LangchainPinecone(index, embeddings.embed_query, "text")
-llm = ChatOpenAI(temperature=0.3, model_name="gpt-4o", openai_api_key=OPENAI_API_KEY)
+
+# Update the retriever to use keyword arguments
+retriever = vectorstore.as_retriever(search_kwargs={"k": 30})
+
+llm = ChatOpenAI(temperature=0.3, model_name="gpt-4", openai_api_key=OPENAI_API_KEY)
 qa_chain = RetrievalQA.from_chain_type(
     llm=llm,
     chain_type="stuff",
-    retriever=vectorstore.as_retriever(search_kwargs={"k": 30}),
+    retriever=retriever,
     return_source_documents=True,
 )
 
@@ -243,7 +247,7 @@ def format_answer(answer, sources):
     Sources: {', '.join(sources)}
     """
     response = openai_client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-4",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3
     )
@@ -273,7 +277,7 @@ def format_conversation_history(history):
     {history}
     """
     response = openai_client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-4",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3
     )
@@ -346,7 +350,6 @@ st.markdown(
 
     // Add scroll event listener
     window.addEventListener('scroll', toggleScrollButton);
-
     // Add resize event listener to handle window size changes
     window.addEventListener('resize', toggleScrollButton);
 
