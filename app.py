@@ -4,6 +4,7 @@ from PyPDF2 import PdfReader
 from openai import OpenAI
 import io
 import time
+import tiktoken
 from langchain.chat_models import ChatOpenAI
 from langchain.chains import RetrievalQA
 from langchain.embeddings import OpenAIEmbeddings
