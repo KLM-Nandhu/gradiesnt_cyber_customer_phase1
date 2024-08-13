@@ -167,23 +167,25 @@ st.title("🤖 Gradient Cyber Bot")
 # Initialize Pinecone and OpenAI with environment variables
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-INDEX_NAME = "gradientcyber"
 PINECONE_ENVIRONMENT = os.getenv("PINECONE_ENVIRONMENT")
+PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME")
 
 # Initialize clients
 try:
     pinecone.init(api_key=PINECONE_API_KEY, environment=PINECONE_ENVIRONMENT)
-    index = pinecone.Index(INDEX_NAME)
     openai_client = OpenAI(api_key=OPENAI_API_KEY)
 except Exception as e:
     st.error(f"Error initializing clients: {str(e)}")
     st.stop()
 
-
 # Initialize LangChain components
 try:
     embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
-    vectorstore = LangchainPinecone(index, embeddings.embed_query, "text")
+    vectorstore = LangchainPinecone.from_existing_index(
+        index_name=PINECONE_INDEX_NAME,
+        embedding=embeddings.embed_query,
+        text_key="text"
+    )
     llm = ChatOpenAI(temperature=0.3, model_name="gpt-4", openai_api_key=OPENAI_API_KEY)
     qa_chain = RetrievalQA.from_chain_type(
         llm=llm,
@@ -227,7 +229,7 @@ def upsert_to_pinecone(chunks, pdf_name):
                 for id, embedding, chunk in zip(ids, embeddings_batch, batch)
             ]
             
-            index.upsert(vectors=to_upsert)
+            pinecone.Index(PINECONE_INDEX_NAME).upsert(vectors=to_upsert)
             
             chunk_counter += len(batch)
             progress = min(1.0, chunk_counter / total_chunks)
@@ -278,7 +280,7 @@ def answer_question(question):
         return formatted_answer
     except Exception as e:
         st.error(f"Error in answer_question: {str(e)}")
-        return f"I'm sorry, but I encountered an error while trying to answer your question. Error: {str(e)}"
+        return f"I encountered an error while trying to answer your question. Error: {str(e)}"
 
 def format_conversation_history(history):
     prompt = f"""
