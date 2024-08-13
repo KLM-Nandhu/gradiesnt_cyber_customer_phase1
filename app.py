@@ -5,7 +5,10 @@ from openai import OpenAI
 import io
 import time
 from langchain.chat_models import ChatOpenAI
+from langchain.chains import RetrievalQA
 from langchain.embeddings import OpenAIEmbeddings
+from langchain.vectorstores import Pinecone as LangchainPinecone
+from langchain.callbacks import StreamlitCallbackHandler
 import os
 
 # Set LangChain environment variables
@@ -17,11 +20,11 @@ os.environ["LANGCHAIN_PROJECT"] = "grdient_cyber_bot"
 # Set page configuration
 st.set_page_config(layout="wide", page_title="Gradient Cyber Bot", page_icon="🤖")
 
-# Custom CSS (keeping your existing styles)
+# Custom CSS for improved UI
 st.markdown(
     """
     <style>
-    ... (your existing CSS styles)
+    /* Your custom CSS here */
     </style>
     """,
     unsafe_allow_html=True,
@@ -52,7 +55,20 @@ except Exception as e:
 
 # Initialize LangChain components
 embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
-llm = ChatOpenAI(temperature=0.3, model_name="gpt-4o", openai_api_key=OPENAI_API_KEY)
+
+# Update vectorstore initialization to ensure keyword arguments are used
+vectorstore = LangchainPinecone(index, embeddings.embed_query, "text")
+
+# Update the retriever to use keyword arguments
+retriever = vectorstore.as_retriever(search_kwargs={"k": 30})
+
+llm = ChatOpenAI(temperature=0.3, model_name="gpt-4", openai_api_key=OPENAI_API_KEY)
+qa_chain = RetrievalQA.from_chain_type(
+    llm=llm,
+    chain_type="stuff",
+    retriever=retriever,
+    return_source_documents=True,
+)
 
 def extract_text_from_pdf(pdf_file):
     pdf_reader = PdfReader(pdf_file)
@@ -98,28 +114,6 @@ def upsert_to_pinecone(chunks, pdf_name):
         time.sleep(1)
     return True
 
-def question_to_pinecone_query(question, top_k=10):
-    # Convert question to embedding
-    question_embedding = embeddings.embed_query(question)
-    
-    # Query Pinecone
-    query_response = index.query(
-        vector=question_embedding,
-        top_k=top_k,
-        include_metadata=True
-    )
-    
-    # Process and return results
-    results = []
-    for match in query_response.matches:
-        results.append({
-            'id': match.id,
-            'score': match.score,
-            'metadata': match.metadata
-        })
-    
-    return results
-
 def format_answer(answer, sources):
     prompt = f"""
     Format the following answer in an attractive and easy-to-read manner. 
@@ -132,7 +126,7 @@ def format_answer(answer, sources):
     Sources: {', '.join(sources)}
     """
     response = openai_client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-4",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3
     )
@@ -140,32 +134,10 @@ def format_answer(answer, sources):
 
 def answer_question(question):
     try:
-        # Get relevant documents from Pinecone
-        relevant_docs = question_to_pinecone_query(question)
-        
-        # Prepare context from relevant documents
-        context = "\n\n".join([doc['metadata']['text'] for doc in relevant_docs])
-        
-        # Prepare prompt for GPT-4o
-        prompt = f"""
-        Based on the following context, answer the question: {question}
-
-        Context:
-        {context}
-
-        Please provide a comprehensive and accurate answer. If the information is not available in the context, please say so.
-        """
-        
-        # Get answer from GPT-4o
-        response = openai_client.chat.completions.create(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.3
-        )
-        answer = response.choices[0].message.content
-        
-        # Get sources
-        sources = list(set([doc['metadata']['source'] for doc in relevant_docs]))
+        st_callback = StreamlitCallbackHandler(st.container())
+        result = qa_chain({"query": question}, callbacks=[st_callback])
+        answer = result['result']
+        sources = list(set([doc.metadata['source'] for doc in result['source_documents']]))
         
         # Format the answer
         formatted_answer = format_answer(answer, sources)
@@ -184,7 +156,7 @@ def format_conversation_history(history):
     {history}
     """
     response = openai_client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-4",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3
     )
@@ -233,13 +205,39 @@ with st.sidebar:
         st.session_state['chat_history'] = []
         st.rerun()
 
-# Scroll to bottom button and JavaScript (keeping your existing code)
+# Scroll to bottom button and JavaScript
 st.markdown(
     """
     <button id="scroll-to-bottom" onclick="scrollToBottom()">⬇</button>
     
     <script>
-    ... (your existing JavaScript)
+    function scrollToBottom() {
+        window.scrollTo(0, document.body.scrollHeight);
+    }
+
+    function toggleScrollButton() {
+        var scrollButton = document.getElementById('scroll-to-bottom');
+        if ((window.innerHeight + window.pageYOffset) < document.body.offsetHeight - 100) {
+            scrollButton.style.display = 'flex';
+        } else {
+            scrollButton.style.display = 'none';
+        }
+    }
+
+    // Initial call to set button visibility
+    toggleScrollButton();
+
+    // Add scroll event listener
+    window.addEventListener('scroll', toggleScrollButton);
+    // Add resize event listener to handle window size changes
+    window.addEventListener('resize', toggleScrollButton);
+
+    // MutationObserver to watch for changes in the DOM
+    var observer = new MutationObserver(function(mutations) {
+        toggleScrollButton();
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
     </script>
     """,
     unsafe_allow_html=True
