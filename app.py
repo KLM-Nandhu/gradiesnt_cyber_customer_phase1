@@ -4,14 +4,9 @@ from PyPDF2 import PdfReader
 from openai import OpenAI
 import io
 import time
-from langchain.chat_models import ChatOpenAI
-from langchain.chains import RetrievalQA
-from langchain.embeddings import OpenAIEmbeddings
-from langchain.vectorstores import Pinecone as LangchainPinecone
-from langchain.callbacks import StreamlitCallbackHandler
 import os
 
-# Set LangChain environment variables
+# Set LangChain environment variables (you can remove these if not needed)
 os.environ["LANGCHAIN_TRACING_V2"] = "true"
 os.environ["LANGCHAIN_ENDPOINT"] = "https://api.smith.langchain.com"
 os.environ["LANGCHAIN_API_KEY"] = st.secrets["LANGCHAIN_API_KEY"]
@@ -176,23 +171,6 @@ except Exception as e:
     st.sidebar.error(f"Error connecting to index: {str(e)}")
     st.stop()
 
-# Initialize LangChain components
-embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
-
-# Update vectorstore initialization to ensure keyword arguments are used
-vectorstore = LangchainPinecone(index, embeddings.embed_query, "text")
-
-# Update the retriever to use keyword arguments
-retriever = vectorstore.as_retriever(search_kwargs={"k": 30})
-
-llm = ChatOpenAI(temperature=0.3, model_name="gpt-4", openai_api_key=OPENAI_API_KEY)
-qa_chain = RetrievalQA.from_chain_type(
-    llm=llm,
-    chain_type="stuff",
-    retriever=retriever,
-    return_source_documents=True,
-)
-
 def extract_text_from_pdf(pdf_file):
     pdf_reader = PdfReader(pdf_file)
     text = ""
@@ -214,7 +192,12 @@ def upsert_to_pinecone(chunks, pdf_name):
         ids = [f"{pdf_name}_{j}" for j in range(i, i+len(batch))]
         
         try:
-            embeddings_batch = embeddings.embed_documents(batch)
+            # Embed the chunks using OpenAI
+            response = openai_client.embeddings.create(
+                model="text-embedding-ada-002",
+                input=batch
+            )
+            embeddings_batch = [embedding.embedding for embedding in response.data]
             
             to_upsert = [
                 (id, embedding, {"text": chunk, "source": pdf_name})
@@ -238,6 +221,51 @@ def upsert_to_pinecone(chunks, pdf_name):
         time.sleep(1)
     return True
 
+def answer_question(question):
+    try:
+        # Get the embedding for the question
+        response = openai_client.embeddings.create(
+            model="text-embedding-ada-002",
+            input=[question]
+        )
+        question_embedding = response.data[0].embedding
+
+        # Query Pinecone
+        query_results = index.query(vector=question_embedding, top_k=5, include_metadata=True)
+        
+        # Extract text from retrieved documents
+        context = "\n".join([match.metadata['text'] for match in query_results.matches])
+        
+        # Prepare the prompt for the LLM
+        prompt = f"""
+        Use the following context to answer the question. If the answer is not in the context, say "I don't have enough information to answer that question."
+
+        Context:
+        {context}
+
+        Question: {question}
+
+        Answer:
+        """
+        
+        # Generate answer using OpenAI
+        response = openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3
+        )
+        
+        answer = response.choices[0].message.content
+        
+        # Format the answer with sources
+        sources = list(set([match.metadata.get('source', 'Unknown') for match in query_results.matches]))
+        formatted_answer = format_answer(answer, sources)
+        
+        return formatted_answer
+    except Exception as e:
+        st.error(f"An unexpected error occurred: {str(e)}")
+        return f"I'm sorry, but I encountered an unexpected error while answering your question: {str(e)}"
+
 def format_answer(answer, sources):
     prompt = f"""
     Format the following answer in an attractive and easy-to-read manner. 
@@ -256,30 +284,6 @@ def format_answer(answer, sources):
     )
     return response.choices[0].message.content
 
-def answer_question(question):
-    try:
-        st_callback = StreamlitCallbackHandler(st.container())
-        
-        # Use the correct input format for the qa_chain
-        result = qa_chain({"query": question}, callbacks=[st_callback])
-        
-        if 'result' not in result or 'source_documents' not in result:
-            raise KeyError("Expected keys 'result' and 'source_documents' not found in the chain output")
-
-        answer = result['result']
-        sources = list(set([doc.metadata.get('source', 'Unknown') for doc in result['source_documents']]))
-
-        # Format the answer
-        formatted_answer = format_answer(answer, sources)
-        
-        return formatted_answer
-    except KeyError as e:
-        st.error(f"Error in chain output structure: {str(e)}")
-        return f"I encountered an error while processing your question. The output structure was unexpected: {str(e)}"
-    except Exception as e:
-        st.error(f"An unexpected error occurred: {str(e)}")
-        return f"I'm sorry, but I encountered an unexpected error while answering your question: {str(e)}"
-
 def format_conversation_history(history):
     prompt = f"""
     Summarize and format the following conversation history in an engaging and easy-to-read manner.
@@ -290,7 +294,7 @@ def format_conversation_history(history):
     {history}
     """
     response = openai_client.chat.completions.create(
-        model="gpt-4",
+        model="gpt-4o",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3
     )
