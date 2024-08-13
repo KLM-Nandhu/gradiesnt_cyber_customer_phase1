@@ -173,11 +173,11 @@ PINECONE_INDEX_NAME = "gradientcyber"
 # Initialize clients
 try:
     # Explicitly mention serverless specification
-    pinecone.init(api_key=PINECONE_API_KEY)
+    pc = Pinecone(api_key=PINECONE_API_KEY)
     st.write("Initializing serverless Pinecone database...")
     
     # Initialize Pinecone index for serverless configuration
-    index = pinecone.Index(PINECONE_INDEX_NAME)
+    index = pc.Index(PINECONE_INDEX_NAME)
     st.write(f"Successfully connected to serverless Pinecone index: {PINECONE_INDEX_NAME}")
     
     openai_client = OpenAI(api_key=OPENAI_API_KEY)
