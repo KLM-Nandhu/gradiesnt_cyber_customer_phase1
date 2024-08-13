@@ -389,4 +389,24 @@ for message in st.session_state['chat_history']:
         st.markdown(message["content"])
 
 # Chat input
-question = st.chat_input("Ask a question about the uploaded documents
+question = st.chat_input("Ask a question about the uploaded documents:")
+
+if question:
+    # Add user message to chat history
+    st.session_state['chat_history'].append({"role": "user", "content": question})
+    
+    # Display user message
+    with st.chat_message("user"):
+        st.markdown(question)
+
+    # Get bot response
+    with st.chat_message("assistant"):
+        message_placeholder = st.empty()
+        
+        with st.spinner("Searching for an answer..."):
+            answer = answer_question(question)
+        
+        message_placeholder.markdown(f'<div class="answer-card">{answer}</div>', unsafe_allow_html=True)
+        
+        # Add assistant message to chat history
+        st.session_state['chat_history'].append({"role": "assistant", "content": answer})
