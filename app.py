@@ -233,7 +233,7 @@ def answer_question(question):
         question_embedding = response.data[0].embedding
 
         # Query Pinecone
-        query_results = index.query(vector=question_embedding, top_k=5, include_metadata=True)
+        query_results = index.query(vector=question_embedding, top_k=30, include_metadata=True)
         
         # Extract text from retrieved documents
         context = "\n".join([match.metadata['text'] for match in query_results.matches])
