@@ -286,22 +286,6 @@ def format_answer(answer, sources):
     )
     return response.choices[0].message.content
 
-def format_conversation_history(history):
-    prompt = f"""
-    Summarize and format the following conversation history in an engaging and easy-to-read manner.
-    Highlight key points, questions asked, and main takeaways from the answers.
-    Use markdown formatting to make it visually appealing.
-
-    Conversation History:
-    {history}
-    """
-    response = openai_client.chat.completions.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.3
-    )
-    return response.choices[0].message.content
-
 # Sidebar for file upload and buttons
 with st.sidebar:
     st.header("Upload PDFs")
@@ -335,9 +319,8 @@ with st.sidebar:
     st.header("Chat Options")
     if st.button("View Conversation History"):
         if st.session_state['chat_history']:
-            history_text = "\n".join([f"{msg['role']}: {msg['content']}" for msg in st.session_state['chat_history']])
-            formatted_history = format_conversation_history(history_text)
-            st.markdown(formatted_history)
+            for message in st.session_state['chat_history']:
+                st.markdown(f"**{message['role'].capitalize()}**: {message['content']}")
         else:
             st.write("No conversation history yet.")
     
@@ -400,10 +383,6 @@ if question:
 
 # Check if we're waiting for an answer
 if st.session_state['waiting_for_answer']:
-    # Display user message
-    with st.chat_message("user"):
-        st.markdown(st.session_state['chat_history'][-1]["content"])
-
     # Get bot response
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
