@@ -1,5 +1,5 @@
 import streamlit as st
-from pinecone import Pinecone
+import pinecone
 from PyPDF2 import PdfReader
 from openai import OpenAI
 import io
@@ -172,8 +172,8 @@ PINECONE_ENVIRONMENT = os.getenv("PINECONE_ENVIRONMENT")
 
 # Initialize clients
 try:
-    pc = Pinecone(api_key=PINECONE_API_KEY)
-    index = pc.Index(INDEX_NAME, environment=PINECONE_ENVIRONMENT)
+    pinecone.init(api_key=PINECONE_API_KEY, environment=PINECONE_ENVIRONMENT)
+    index = pinecone.Index(INDEX_NAME)
     openai_client = OpenAI(api_key=OPENAI_API_KEY)
 except Exception as e:
     st.error(f"Error initializing clients: {str(e)}")
@@ -410,3 +410,10 @@ if question:
         
         # Add assistant message to chat history
         st.session_state['chat_history'].append({"role": "assistant", "content": answer})
+
+# Error handling and logging
+if st.session_state.get("show_error", False):
+    st.error(st.session_state.error_message)
+    st.session_state.show_error = False
+
+# You can add any additional error handling or logging here if needed
