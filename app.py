@@ -169,11 +169,11 @@ st.title("🤖 Gradient Cyber Bot")
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 INDEX_NAME = "gradientcyber"
-PINECONE_ENVIRONMENT = os.getenv("PINECONE_ENVIRONMENT")
+AWS_REGION = "us-east-1"  # Default AWS region
 
 # Initialize clients
 try:
-    pinecone.init(api_key=PINECONE_API_KEY, environment=PINECONE_ENVIRONMENT)
+    pinecone.init(api_key=PINECONE_API_KEY, region=AWS_REGION)
     index = pinecone.Index(INDEX_NAME)
     openai_client = OpenAI(api_key=OPENAI_API_KEY)
 except Exception as e:
