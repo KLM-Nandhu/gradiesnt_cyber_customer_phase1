@@ -169,21 +169,66 @@ st.title("🤖 Gradient Cyber Bot")
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 INDEX_NAME = "gradientcyber"
-PINECONE_ENVIRONMENT = os.getenv("PINECONE_ENVIRONMENT")
+PINECONE_ENVIRONMENT = "us-east-1-aws"  # or your specific Pinecone environment
 
-# Initialize clients
+# Function to initialize Pinecone with error handling
+def initialize_pinecone():
+    try:
+        pinecone.init(api_key=PINECONE_API_KEY, environment=PINECONE_ENVIRONMENT)
+        st.success("Pinecone initialized successfully")
+    except Exception as e:
+        st.error(f"Error initializing Pinecone: {str(e)}")
+        st.stop()
+
+# Function to create or connect to Pinecone index with error handling
+def setup_pinecone_index():
+    try:
+        # Check if the index exists
+        existing_indexes = pinecone.list_indexes()
+        if INDEX_NAME not in existing_indexes:
+            st.info(f"Creating new Pinecone index: {INDEX_NAME}")
+            pinecone.create_index(
+                name=INDEX_NAME,
+                dimension=1536,  # OpenAI embeddings are 1536 dimensions
+                metric='cosine'
+            )
+            st.success(f"Successfully created new index: {INDEX_NAME}")
+        else:
+            st.info(f"Connecting to existing Pinecone index: {INDEX_NAME}")
+
+        # Connect to the index
+        index = pinecone.Index(INDEX_NAME)
+        st.success(f"Successfully connected to index: {INDEX_NAME}")
+        return index
+    except pinecone.core.client.exceptions.ApiException as e:
+        st.error(f"Pinecone API Error: {str(e)}")
+        st.error("Please check your Pinecone API key and environment settings.")
+        st.stop()
+    except Exception as e:
+        st.error(f"Error setting up Pinecone index: {str(e)}")
+        st.stop()
+
+# Initialize Pinecone
+initialize_pinecone()
+
+# Setup Pinecone index
+index = setup_pinecone_index()
+
+# Initialize OpenAI client
 try:
-    pinecone.init(api_key=PINECONE_API_KEY, environment=PINECONE_ENVIRONMENT)
-    index = pinecone.Index(INDEX_NAME)
     openai_client = OpenAI(api_key=OPENAI_API_KEY)
 except Exception as e:
-    st.error(f"Error initializing clients: {str(e)}")
+    st.error(f"Error initializing OpenAI client: {str(e)}")
     st.stop()
 
 # Initialize LangChain components
 try:
     embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
-    vectorstore = LangchainPinecone(index, embeddings.embed_query, "text")
+    vectorstore = LangchainPinecone.from_existing_index(
+        index_name=INDEX_NAME,
+        embedding=embeddings,
+        text_key="text"
+    )
     llm = ChatOpenAI(temperature=0.3, model_name="gpt-3.5-turbo", openai_api_key=OPENAI_API_KEY)
     qa_chain = RetrievalQA.from_chain_type(
         llm=llm,
@@ -277,7 +322,8 @@ def answer_question(question):
         
         return formatted_answer
     except Exception as e:
-        return f"Error: {str(e)}"
+        st.error(f"Error in answer_question: {str(e)}")
+        return f"I'm sorry, but I encountered an error while trying to answer your question. Error: {str(e)}"
 
 def format_conversation_history(history):
     prompt = f"""
@@ -418,3 +464,6 @@ if st.session_state.get("show_error", False):
     st.session_state.show_error = False
 
 # You can add any additional error handling or logging here if needed
+
+if __name__ == "__main__":
+    st.write("Gradient Cyber Bot is ready to assist you!")
