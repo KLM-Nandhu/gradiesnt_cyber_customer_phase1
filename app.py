@@ -252,7 +252,7 @@ def answer_question(question):
         
         # Generate answer using OpenAI
         response = openai_client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4o",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3
         )
@@ -280,7 +280,7 @@ def format_answer(answer, sources):
     Sources: {', '.join(sources)}
     """
     response = openai_client.chat.completions.create(
-        model="gpt-4",
+        model="gpt-4o",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3
     )
