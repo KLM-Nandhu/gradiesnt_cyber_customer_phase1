@@ -165,29 +165,35 @@ if 'chat_history' not in st.session_state:
     st.session_state['chat_history'] = []
 
 # Streamlit app title
-st.title("🤖 Gradient Cyber Bot")
+st.title("🤖 Gradient Cyber Bot (Serverless Pinecone Edition)")
 
 # Initialize Pinecone and OpenAI with environment variables
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-PINECONE_INDEX_NAME = "gradientcyber"  # Set default index name
+PINECONE_INDEX_NAME = "gradientcyber"
 
 # Initialize clients
 try:
+    # Explicitly mention serverless specification
     pinecone.init(api_key=PINECONE_API_KEY)
+    st.write("Initializing serverless Pinecone database...")
+    
+    # Initialize Pinecone index with serverless configuration
+    index = pinecone.Index(
+        PINECONE_INDEX_NAME,
+        host="https://gradientcyber-z1co3qo.svc.aped-4627-b74a.pinecone.io"
+    )
+    st.write(f"Successfully connected to serverless Pinecone index: {PINECONE_INDEX_NAME}")
+    
     openai_client = OpenAI(api_key=OPENAI_API_KEY)
 except Exception as e:
-    st.error(f"Error initializing clients: {str(e)}")
+    st.error(f"Error initializing serverless Pinecone client: {str(e)}")
     st.stop()
 
 # Initialize LangChain components
 try:
     embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
-    vectorstore = LangchainPinecone.from_existing_index(
-        index_name=PINECONE_INDEX_NAME,
-        embedding=embeddings.embed_query,
-        text_key="text"
-    )
+    vectorstore = LangchainPinecone(index, embeddings.embed_query, "text")
     llm = ChatOpenAI(temperature=0.3, model_name="gpt-4", openai_api_key=OPENAI_API_KEY)
     qa_chain = RetrievalQA.from_chain_type(
         llm=llm,
@@ -231,7 +237,7 @@ def upsert_to_pinecone(chunks, pdf_name):
                 for id, embedding, chunk in zip(ids, embeddings_batch, batch)
             ]
             
-            pinecone.Index(PINECONE_INDEX_NAME).upsert(vectors=to_upsert)
+            index.upsert(vectors=to_upsert)
             
             chunk_counter += len(batch)
             progress = min(1.0, chunk_counter / total_chunks)
@@ -240,7 +246,7 @@ def upsert_to_pinecone(chunks, pdf_name):
             st.sidebar.text(f"Processed {chunk_counter}/{total_chunks} chunks for {pdf_name}")
             
         except Exception as e:
-            st.sidebar.error(f"Error during upsert: {str(e)}")
+            st.sidebar.error(f"Error during upsert to serverless Pinecone: {str(e)}")
             st.sidebar.error(f"Failed at chunk {i} for {pdf_name}")
             return False
         
@@ -312,7 +318,7 @@ with st.sidebar:
     if uploaded_files:
         st.write(f"{len(uploaded_files)} file(s) uploaded successfully!")
         
-        if st.button("Process and Upsert to Pinecone"):
+        if st.button("Process and Upsert to Serverless Pinecone"):
             overall_progress = st.progress(0)
             for i, uploaded_file in enumerate(uploaded_files):
                 with st.expander(f"Processing {uploaded_file.name}", expanded=True):
@@ -323,7 +329,7 @@ with st.sidebar:
                         st.write("Creating chunks...")
                         chunks = create_chunks(pdf_text)
                         
-                        st.write(f"Upserting {len(chunks)} chunks to Pinecone...")
+                        st.write(f"Upserting {len(chunks)} chunks to serverless Pinecone...")
                         success = upsert_to_pinecone(chunks, uploaded_file.name)
                         
                         if success:
@@ -335,7 +341,7 @@ with st.sidebar:
                 
                 overall_progress.progress((i + 1) / len(uploaded_files))
             
-            st.success("Finished processing all PDF files!")
+            st.success("Finished processing all PDF files to serverless Pinecone!")
     
     st.header("Chat Options")
     if st.button("View Conversation History"):
@@ -374,8 +380,7 @@ st.markdown(
 
     // Add scroll event listener
     window.addEventListener('scroll', toggleScrollButton);
-
-    // Add resize event listener to handle window size changes
+// Add resize event listener to handle window size changes
     window.addEventListener('resize', toggleScrollButton);
 
     // MutationObserver to watch for changes in the DOM
@@ -388,13 +393,14 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 # Display chat messages
 for message in st.session_state['chat_history']:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
 # Chat input
-question = st.chat_input("Ask a question about the uploaded documents:")
+question = st.chat_input("Ask a question about the documents in the serverless Pinecone database:")
 
 if question:
     # Add user message to chat history
@@ -408,7 +414,7 @@ if question:
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
         
-        with st.spinner("Searching for an answer..."):
+        with st.spinner("Searching serverless Pinecone database for an answer..."):
             answer = answer_question(question)
         
         message_placeholder.markdown(f'<div class="answer-card">{answer}</div>', unsafe_allow_html=True)
@@ -424,4 +430,4 @@ if st.session_state.get("show_error", False):
 # You can add any additional error handling or logging here if needed
 
 if __name__ == "__main__":
-    st.write("Gradient Cyber Bot is ready to assist you!")
+    st.write("Gradient Cyber Bot is ready to assist you with the serverless Pinecone database!")
