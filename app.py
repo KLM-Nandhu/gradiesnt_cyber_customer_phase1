@@ -24,7 +24,130 @@ st.set_page_config(layout="wide", page_title="Gradient Cyber Bot", page_icon="ðŸ
 st.markdown(
     """
     <style>
-    /* Your custom CSS here */
+    @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap');
+    
+    body {
+        font-family: 'Roboto', sans-serif;
+        background-color: #f0f4f8;
+        color: #1e1e1e;
+    }
+    .reportview-container {
+        background-color: #f0f4f8;
+    }
+    .main .block-container {
+        max-width: 900px;
+        padding-top: 2rem;
+        padding-bottom: 6rem;
+        margin: auto;
+    }
+    .stChatMessage {
+        background-color: #ffffff;
+        border-radius: 15px;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        transition: all 0.3s ease;
+    }
+    .stChatMessage:hover {
+        box-shadow: 0 6px 8px rgba(0,0,0,0.15);
+    }
+    .stChatMessage.user {
+        background-color: #e6f3ff;
+        border-left: 5px solid #2196F3;
+    }
+    .stChatMessage .content p {
+        margin-bottom: 0.5rem;
+        line-height: 1.6;
+    }
+    .stTextInput {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        padding: 1rem;
+        background-color: rgba(255, 255, 255, 0.9);
+        backdrop-filter: blur(10px);
+        z-index: 1000;
+        box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+    }
+    .stTextInput > div {
+        display: flex;
+        justify-content: space-between;
+        max-width: 900px;
+        margin: auto;
+    }
+    .stTextInput input {
+        flex-grow: 1;
+        margin-right: 1rem;
+        border-radius: 25px;
+        border: 2px solid #2196F3;
+        padding: 0.75rem 1.5rem;
+        font-size: 1rem;
+        transition: all 0.3s ease;
+    }
+    .stTextInput input:focus {
+        box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.3);
+        outline: none;
+    }
+    .stButton button {
+        border-radius: 25px;
+        padding: 0.75rem 1.5rem;
+        background-color: #2196F3;
+        color: white;
+        font-weight: bold;
+        border: none;
+        transition: all 0.3s ease;
+    }
+    .stButton button:hover {
+        background-color: #1976D2;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    }
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    .answer-card {
+        background-color: #ffffff;
+        border-radius: 15px;
+        padding: 2rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        border-left: 5px solid #4CAF50;
+    }
+    .answer-card h3 {
+        color: #2c3e50;
+        margin-bottom: 1rem;
+        font-weight: 700;
+    }
+    .source-list {
+        margin-top: 1rem;
+        padding-left: 1.5rem;
+    }
+    .source-list li {
+        margin-bottom: 0.5rem;
+        color: #546E7A;
+    }
+    #scroll-to-bottom {
+        position: fixed;
+        bottom: 100px;
+        right: 30px;
+        width: 50px;
+        height: 50px;
+        background-color: #2196F3;
+        color: white;
+        border: none;
+        border-radius: 50%;
+        font-size: 24px;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        transition: all 0.3s ease;
+        z-index: 9999;
+    }
+    #scroll-to-bottom:hover {
+        background-color: #1976D2;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -98,6 +221,7 @@ def upsert_to_pinecone(chunks, pdf_name):
                 for id, embedding, chunk in zip(ids, embeddings_batch, batch)
             ]
             
+            # Upsert using keyword arguments
             index.upsert(vectors=to_upsert)
             
             chunk_counter += len(batch)
