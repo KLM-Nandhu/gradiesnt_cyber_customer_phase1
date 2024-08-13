@@ -8,10 +8,12 @@ import os
 
 os.environ["LANGCHAIN_TRACING_V2"] = "true"
 os.environ["LANGCHAIN_ENDPOINT"] = "https://api.smith.langchain.com"
-os.environ["LANGCHAIN_PROJECT"] = "gradient_cyber_customer_bot"
+os.environ["LANGCHAIN_PROJECT"] = "gradient_cyber_bot"
 
-# Securely access the LangChain API key from Streamlit secrets
+# Securely set the API key from Streamlit secrets
 os.environ["LANGCHAIN_API_KEY"] = st.secrets["LANGCHAIN_API_KEY"]
+
+
 # Set page configuration
 st.set_page_config(layout="wide", page_title="Gradient Cyber Bot", page_icon="🤖")
 
