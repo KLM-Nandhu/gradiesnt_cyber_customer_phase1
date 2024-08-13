@@ -392,4 +392,10 @@ if question:
         with st.spinner("Searching for an answer..."):
             answer = answer_question(question)
         
-        message_placeholder.markdown(f'<div class="answer-card">{answer}</div>', unsafe_allow_html=
+        message_placeholder.markdown(f'<div class="answer-card">{answer}</div>', unsafe_allow_html=True)
+        
+        # Add assistant message to chat history
+        st.session_state['chat_history'].append({"role": "assistant", "content": answer})
+
+if __name__ == "__main__":
+    st.write("Gradient Cyber Bot is ready to assist you!")
