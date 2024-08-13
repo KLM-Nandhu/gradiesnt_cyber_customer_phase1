@@ -374,8 +374,8 @@ with st.sidebar:
             overall_progress = st.progress(0)
             for i, uploaded_file in enumerate(uploaded_files):
                 with st.expander(f"Processing {uploaded_file.name}", expanded=True):
-             st.write(f"Extracting text from {uploaded_file.name}...")
-                    pdf_text = extract_text_from_pdf(io.BytesIO(uploaded_file.read()))
+                     st.write(f"Extracting text from {uploaded_file.name}...")
+                     pdf_text = extract_text_from_pdf(io.BytesIO(uploaded_file.read()))
                     
                     if pdf_text:
                         st.write("Creating chunks...")
