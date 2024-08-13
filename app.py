@@ -3,10 +3,8 @@ import io
 import time
 import os
 from dotenv import load_dotenv
-
-# Pinecone import for serverless database
-import pinecone  # Note: Using serverless Pinecone database
-
+import pinecone 
+from pinecone import Pinecone, Serverless
 from PyPDF2 import PdfReader
 from openai import OpenAI
 from langchain.chat_models import ChatOpenAI
