@@ -1,5 +1,5 @@
 import streamlit as st
-import Pinecone
+from pinecone import Pinecone, ServerlessSpec
 from PyPDF2 import PdfReader
 from openai import OpenAI
 import io
