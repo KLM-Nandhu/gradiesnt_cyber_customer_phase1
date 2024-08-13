@@ -4,11 +4,7 @@ from PyPDF2 import PdfReader
 from openai import OpenAI
 import io
 import time
-from langchain.chat_models import ChatOpenAI
-from langchain.chains import RetrievalQA
 from langchain.embeddings import OpenAIEmbeddings
-from langchain.vectorstores import Pinecone as LangchainPinecone
-from langchain.callbacks import StreamlitCallbackHandler
 import os
 
 # Set LangChain environment variables
@@ -179,20 +175,6 @@ except Exception as e:
 # Initialize LangChain components
 embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
 
-# Update vectorstore initialization to ensure keyword arguments are used
-vectorstore = LangchainPinecone(index, embeddings.embed_query, "text")
-
-# Update the retriever to use keyword arguments
-retriever = vectorstore.as_retriever(search_kwargs={"k": 30})
-
-llm = ChatOpenAI(temperature=0.3, model_name="gpt-4", openai_api_key=OPENAI_API_KEY)
-qa_chain = RetrievalQA.from_chain_type(
-    llm=llm,
-    chain_type="stuff",
-    retriever=retriever,
-    return_source_documents=True,
-)
-
 def extract_text_from_pdf(pdf_file):
     pdf_reader = PdfReader(pdf_file)
     text = ""
@@ -238,6 +220,55 @@ def upsert_to_pinecone(chunks, pdf_name):
         time.sleep(1)
     return True
 
+def query_pinecone(query_embedding, k=5):
+    results = index.query(vector=query_embedding, top_k=k, include_metadata=True)
+    return results
+
+def extract_text_from_results(results):
+    texts = [match.metadata['text'] for match in results.matches]
+    return "\n".join(texts)
+
+def answer_question(question):
+    try:
+        # Embed the query
+        query_embedding = embeddings.embed_query(question)
+        
+        # Query Pinecone
+        results = query_pinecone(query_embedding)
+        
+        # Extract text from results
+        context = extract_text_from_results(results)
+        
+        # Prepare the prompt for the LLM
+        prompt = f"""
+        Use the following context to answer the question. If the answer is not in the context, say "I don't have enough information to answer that question."
+
+        Context:
+        {context}
+
+        Question: {question}
+
+        Answer:
+        """
+        
+        # Generate answer using OpenAI
+        response = openai_client.chat.completions.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3
+        )
+        
+        answer = response.choices[0].message.content
+        
+        # Format the answer with sources
+        sources = [match.id for match in results.matches]
+        formatted_answer = format_answer(answer, sources)
+        
+        return formatted_answer
+    except Exception as e:
+        st.error(f"An unexpected error occurred: {str(e)}")
+        return f"I'm sorry, but I encountered an unexpected error while answering your question: {str(e)}"
+
 def format_answer(answer, sources):
     prompt = f"""
     Format the following answer in an attractive and easy-to-read manner. 
@@ -255,30 +286,6 @@ def format_answer(answer, sources):
         temperature=0.3
     )
     return response.choices[0].message.content
-
-def answer_question(question):
-    try:
-        st_callback = StreamlitCallbackHandler(st.container())
-        
-        # Use the correct input format for the qa_chain
-        result = qa_chain({"question": question}, callbacks=[st_callback])
-        
-        if 'result' not in result or 'source_documents' not in result:
-            raise KeyError("Expected keys 'result' and 'source_documents' not found in the chain output")
-
-        answer = result['result']
-        sources = list(set([doc.metadata.get('source', 'Unknown') for doc in result['source_documents']]))
-        
-        # Format the answer
-        formatted_answer = format_answer(answer, sources)
-        
-        return formatted_answer
-    except KeyError as e:
-        st.error(f"Error in chain output structure: {str(e)}")
-        return f"I encountered an error while processing your question. The output structure was unexpected: {str(e)}"
-    except Exception as e:
-        st.error(f"An unexpected error occurred: {str(e)}")
-        return f"I'm sorry, but I encountered an unexpected error while answering your question: {str(e)}"
 
 def format_conversation_history(history):
     prompt = f"""
@@ -393,7 +400,7 @@ if question:
     with st.chat_message("user"):
         st.markdown(question)
 
-    # Get bot response
+# Get bot response
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
         
