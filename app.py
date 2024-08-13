@@ -7,14 +7,14 @@ import time
 from langchain.chat_models import ChatOpenAI
 from langchain.chains import RetrievalQA
 from langchain.embeddings import OpenAIEmbeddings
+from langchain.vectorstores import Pinecone as LangchainPinecone
 from langchain.callbacks import StreamlitCallbackHandler
-from langchain.schema import Document
 import os
 
 # Set LangChain environment variables
 os.environ["LANGCHAIN_TRACING_V2"] = "true"
 os.environ["LANGCHAIN_ENDPOINT"] = "https://api.smith.langchain.com"
-os.environ["LANGCHAIN_API_KEY"] = "LANGCHAIN_API_KEY"
+os.environ["LANGCHAIN_API_KEY"] = st.secrets["LANGCHAIN_API_KEY"]
 os.environ["LANGCHAIN_PROJECT"] = "grdient_cyber_bot"
 
 # Set page configuration
@@ -161,21 +161,9 @@ if 'chat_history' not in st.session_state:
 st.title("🤖 Gradient Cyber Bot")
 
 # Initialize Pinecone and OpenAI with hardcoded values
-PINECONE_API_KEY = "PINECONE_API_KEY"
-OPENAI_API_KEY = "OPENAI_API_KEY"
+PINECONE_API_KEY = st.secrets["PINECONE_API_KEY"]
+OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
 INDEX_NAME = "gradientcyber"
-
-# Custom Pinecone Retriever
-class CustomPineconeRetriever:
-    def __init__(self, index, embedding_function):
-        self.index = index
-        self.embedding_function = embedding_function
-
-    def get_relevant_documents(self, query):
-        query_embedding = self.embedding_function(query)
-        results = self.index.query(vector=query_embedding, top_k=30, include_metadata=True)
-        return [Document(page_content=match['metadata']['text'], metadata={'source': match['metadata']['source']}) 
-                for match in results['matches']]
 
 # Initialize clients
 pc = Pinecone(api_key=PINECONE_API_KEY)
@@ -190,15 +178,12 @@ except Exception as e:
 
 # Initialize LangChain components
 embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
-llm = ChatOpenAI(temperature=0.3, model_name="gpt-4", openai_api_key=OPENAI_API_KEY)
-
-# Use custom retriever
-custom_retriever = CustomPineconeRetriever(index, embeddings.embed_query)
-
+vectorstore = LangchainPinecone(index, embeddings.embed_query, "text")
+llm = ChatOpenAI(temperature=0.3, model_name="gpt-4o", openai_api_key=OPENAI_API_KEY)
 qa_chain = RetrievalQA.from_chain_type(
     llm=llm,
     chain_type="stuff",
-    retriever=custom_retriever,
+    retriever=vectorstore.as_retriever(search_kwargs={"k": 30}),
     return_source_documents=True,
 )
 
@@ -258,7 +243,7 @@ def format_answer(answer, sources):
     Sources: {', '.join(sources)}
     """
     response = openai_client.chat.completions.create(
-        model="gpt-4",
+        model="gpt-4o",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3
     )
@@ -288,7 +273,7 @@ def format_conversation_history(history):
     {history}
     """
     response = openai_client.chat.completions.create(
-        model="gpt-4",
+        model="gpt-4o",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3
     )
@@ -361,6 +346,7 @@ st.markdown(
 
     // Add scroll event listener
     window.addEventListener('scroll', toggleScrollButton);
+
     // Add resize event listener to handle window size changes
     window.addEventListener('resize', toggleScrollButton);
 
@@ -402,6 +388,3 @@ if question:
         
         # Add assistant message to chat history
         st.session_state['chat_history'].append({"role": "assistant", "content": answer})
-
-if __name__ == "__main__":
-    st.write("Gradient Cyber Bot is ready to assist you!")
