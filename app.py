@@ -9,7 +9,7 @@ import os
 # Set LangChain environment variables (you can remove these if not needed)
 os.environ["LANGCHAIN_TRACING_V2"] = "true"
 os.environ["LANGCHAIN_ENDPOINT"] = "https://api.smith.langchain.com"
-os.environ["LANGCHAIN_API_KEY"] = st.secrets["LANGCHAIN_API_KEY"]
+os.environ["LANGCHAIN_API_KEY"] = "LANGCHAIN_API_KEY"
 os.environ["LANGCHAIN_PROJECT"] = "grdient_cyber_bot"
 
 # Set page configuration
