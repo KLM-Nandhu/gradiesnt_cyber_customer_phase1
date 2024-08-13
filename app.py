@@ -1,16 +1,19 @@
 import streamlit as st
-import pinecone
-from PyPDF2 import PdfReader
-from openai import OpenAI
 import io
 import time
+import os
+from dotenv import load_dotenv
+
+# Pinecone import for serverless database
+import pinecone  # Note: Using serverless Pinecone database
+
+from PyPDF2 import PdfReader
+from openai import OpenAI
 from langchain.chat_models import ChatOpenAI
 from langchain.chains import RetrievalQA
 from langchain.embeddings import OpenAIEmbeddings
 from langchain.vectorstores import Pinecone as LangchainPinecone
 from langchain.callbacks import StreamlitCallbackHandler
-import os
-from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
@@ -167,12 +170,11 @@ st.title("🤖 Gradient Cyber Bot")
 # Initialize Pinecone and OpenAI with environment variables
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-PINECONE_ENVIRONMENT = os.getenv("PINECONE_ENVIRONMENT")
-PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME")
+PINECONE_INDEX_NAME = "gradientcyber"  # Set default index name
 
 # Initialize clients
 try:
-    pinecone.init(api_key=PINECONE_API_KEY, environment=PINECONE_ENVIRONMENT)
+    pinecone.init(api_key=PINECONE_API_KEY)
     openai_client = OpenAI(api_key=OPENAI_API_KEY)
 except Exception as e:
     st.error(f"Error initializing clients: {str(e)}")
