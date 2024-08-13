@@ -263,15 +263,22 @@ def answer_question(question):
         # Use the correct input format for the qa_chain
         result = qa_chain({"question": question}, callbacks=[st_callback])
         
+        if 'result' not in result or 'source_documents' not in result:
+            raise KeyError("Expected keys 'result' and 'source_documents' not found in the chain output")
+
         answer = result['result']
-        sources = list(set([doc.metadata['source'] for doc in result['source_documents']]))
+        sources = list(set([doc.metadata.get('source', 'Unknown') for doc in result['source_documents']]))
         
         # Format the answer
         formatted_answer = format_answer(answer, sources)
         
         return formatted_answer
+    except KeyError as e:
+        st.error(f"Error in chain output structure: {str(e)}")
+        return f"I encountered an error while processing your question. The output structure was unexpected: {str(e)}"
     except Exception as e:
-        return f"Error: {str(e)}"
+        st.error(f"An unexpected error occurred: {str(e)}")
+        return f"I'm sorry, but I encountered an unexpected error while answering your question: {str(e)}"
 
 def format_conversation_history(history):
     prompt = f"""
