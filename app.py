@@ -10,7 +10,7 @@ import os
 os.environ["LANGCHAIN_TRACING_V2"] = "true"
 os.environ["LANGCHAIN_ENDPOINT"] = "https://api.smith.langchain.com"
 os.environ["LANGCHAIN_API_KEY"] = st.secrets["LANGCHAIN_API_KEY"]
-os.environ["LANGCHAIN_PROJECT"] = "gradient_cyber_bot"
+os.environ["LANGCHAIN_PROJECT"] = "grdient_cyber_bot"
 
 # Set page configuration
 st.set_page_config(layout="wide", page_title="Gradient Cyber Bot", page_icon="🤖")
@@ -33,7 +33,7 @@ st.markdown(
         max-width: 900px;
         padding-top: 2rem;
         padding-bottom: 6rem;
-        margin: auto.
+        margin: auto;
     }
     .stChatMessage {
         background-color: #ffffff;
@@ -78,11 +78,11 @@ st.markdown(
         border: 2px solid #2196F3;
         padding: 0.75rem 1.5rem;
         font-size: 1rem;
-        transition: all 0.3s ease.
+        transition: all 0.3s ease;
     }
     .stTextInput input:focus {
         box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.3);
-        outline: none.
+        outline: none;
     }
     .stButton button {
         border-radius: 25px;
@@ -91,11 +91,11 @@ st.markdown(
         color: white;
         font-weight: bold;
         border: none;
-        transition: all 0.3s ease.
+        transition: all 0.3s ease;
     }
     .stButton button:hover {
         background-color: #1976D2;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.2).
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
     }
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
@@ -105,20 +105,20 @@ st.markdown(
         padding: 2rem;
         margin-bottom: 1.5rem;
         box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        border-left: 5px solid #4CAF50.
+        border-left: 5px solid #4CAF50;
     }
     .answer-card h3 {
         color: #2c3e50;
         margin-bottom: 1rem;
-        font-weight: 700.
+        font-weight: 700;
     }
     .source-list {
         margin-top: 1rem;
-        padding-left: 1.5rem.
+        padding-left: 1.5rem;
     }
     .source-list li {
         margin-bottom: 0.5rem;
-        color: #546E7A.
+        color: #546E7A;
     }
     #scroll-to-bottom {
         position: fixed;
@@ -137,11 +137,11 @@ st.markdown(
         cursor: pointer;
         box-shadow: 0 2px 5px rgba(0,0,0,0.2);
         transition: all 0.3s ease;
-        z-index: 9999.
+        z-index: 9999;
     }
     #scroll-to-bottom:hover {
         background-color: #1976D2;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.3).
+        box-shadow: 0 4px 8px rgba(0,0,0,0.3);
     }
     </style>
     """,
@@ -164,12 +164,11 @@ INDEX_NAME = "gradientcyber"
 pc = Pinecone(api_key=PINECONE_API_KEY)
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
-# Ensure Pinecone index and OpenAI client are initialized correctly
+# Try to initialize the index, handle potential errors
 try:
     index = pc.Index(INDEX_NAME)
-    st.sidebar.success("Pinecone index connected successfully.")
 except Exception as e:
-    st.sidebar.error(f"Error connecting to Pinecone index: {str(e)}")
+    st.sidebar.error(f"Error connecting to index: {str(e)}")
     st.stop()
 
 def extract_text_from_pdf(pdf_file):
@@ -359,7 +358,7 @@ st.markdown(
         if ((window.innerHeight + window.pageYOffset) < document.body.offsetHeight - 100) {
             scrollButton.style.display = 'flex';
         } else {
-            scrollButton.style.display = 'none'.
+            scrollButton.style.display = 'none';
         }
     }
 
@@ -391,25 +390,24 @@ for message in st.session_state['chat_history']:
 question = st.chat_input("Ask a question about the uploaded documents:")
 
 if question:
-    # Ensure index is ready before answering the first question
-    if len(st.session_state['chat_history']) == 0 and index.describe_index_stats().total_vector_count == 0:
-        st.error("No data is available to answer questions yet. Please upload and process some documents first.")
-    else:
-        # Add user message to chat history
-        st.session_state['chat_history'].append({"role": "user", "content": question})
-        
-        # Display user message
-        with st.chat_message("user"):
-            st.markdown(question)
+    # Add user message to chat history
+    st.session_state['chat_history'].append({"role": "user", "content": question})
+    
+    # Display user message
+    with st.chat_message("user"):
+        st.markdown(question)
 
-        # Get bot response
-        with st.chat_message("assistant"):
-            message_placeholder = st.empty()
-            
-            with st.spinner("Searching for an answer..."):
-                answer = answer_question(question)
-            
-            message_placeholder.markdown(f'<div class="answer-card">{answer}</div>', unsafe_allow_html=True)
-            
-            # Add assistant message to chat history
-            st.session_state['chat_history'].append({"role": "assistant", "content": answer})
+   # Get bot response
+    with st.chat_message("assistant"):
+        message_placeholder = st.empty()
+        
+        with st.spinner("Searching for an answer..."):
+            answer = answer_question(question)
+        
+        message_placeholder.markdown(f'<div class="answer-card">{answer}</div>', unsafe_allow_html=True)
+        
+        # Add assistant message to chat history
+        st.session_state['chat_history'].append({"role": "assistant", "content": answer})
+
+    # Force a rerun to update the chat history display
+    st.rerun()
