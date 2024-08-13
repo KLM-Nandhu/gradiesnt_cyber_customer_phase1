@@ -171,26 +171,54 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 INDEX_NAME = "gradientcyber"
 PINECONE_ENVIRONMENT = "us-east-1-aws"  # or your specific Pinecone environment
 
+# Function to initialize Pinecone with error handling
+def initialize_pinecone():
+    try:
+        pinecone.init(api_key=PINECONE_API_KEY, environment=PINECONE_ENVIRONMENT)
+        st.success("Pinecone initialized successfully")
+    except Exception as e:
+        st.error(f"Error initializing Pinecone: {str(e)}")
+        st.stop()
+
+# Function to create or connect to Pinecone index with error handling
+def setup_pinecone_index():
+    try:
+        # Check if the index exists
+        existing_indexes = pinecone.list_indexes()
+        if INDEX_NAME not in existing_indexes:
+            st.info(f"Creating new Pinecone index: {INDEX_NAME}")
+            pinecone.create_index(
+                name=INDEX_NAME,
+                dimension=1536,  # OpenAI embeddings are 1536 dimensions
+                metric='cosine'
+            )
+            st.success(f"Successfully created new index: {INDEX_NAME}")
+        else:
+            st.info(f"Connecting to existing Pinecone index: {INDEX_NAME}")
+
+        # Connect to the index
+        index = pinecone.Index(INDEX_NAME)
+        st.success(f"Successfully connected to index: {INDEX_NAME}")
+        return index
+    except pinecone.core.client.exceptions.ApiException as e:
+        st.error(f"Pinecone API Error: {str(e)}")
+        st.error("Please check your Pinecone API key and environment settings.")
+        st.stop()
+    except Exception as e:
+        st.error(f"Error setting up Pinecone index: {str(e)}")
+        st.stop()
+
 # Initialize Pinecone
-pinecone.init(api_key=PINECONE_API_KEY, environment=PINECONE_ENVIRONMENT)
+initialize_pinecone()
 
-# Check if the index exists, if not, create it
-if INDEX_NAME not in pinecone.list_indexes():
-    pinecone.create_index(
-        name=INDEX_NAME,
-        dimension=1536,  # OpenAI embeddings are 1536 dimensions
-        metric='cosine'
-    )
-    print(f"Created new index: {INDEX_NAME}")
-else:
-    print(f"Index {INDEX_NAME} already exists")
+# Setup Pinecone index
+index = setup_pinecone_index()
 
-# Connect to the index
+# Initialize OpenAI client
 try:
-    index = pinecone.Index(INDEX_NAME)
     openai_client = OpenAI(api_key=OPENAI_API_KEY)
 except Exception as e:
-    st.error(f"Error initializing clients: {str(e)}")
+    st.error(f"Error initializing OpenAI client: {str(e)}")
     st.stop()
 
 # Initialize LangChain components
@@ -344,7 +372,6 @@ with st.sidebar:
                 overall_progress.progress((i + 1) / len(uploaded_files))
             
             st.success("Finished processing all PDF files!")
-    
     st.header("Chat Options")
     if st.button("View Conversation History"):
         if st.session_state['chat_history']:
@@ -431,3 +458,7 @@ if st.session_state.get("show_error", False):
     st.session_state.show_error = False
 
 # You can add any additional error handling or logging here if needed
+
+if __name__ == "__main__":
+    st.write("Gradient Cyber Bot is ready to assist you!")
+   
