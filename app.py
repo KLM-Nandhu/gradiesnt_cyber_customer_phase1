@@ -169,23 +169,19 @@ st.title("🤖 Gradient Cyber Bot")
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 INDEX_NAME = "gradientcyber"
-AWS_REGION = "us-east-1"
+PINECONE_ENVIRONMENT = "us-east-1-aws"  # or your specific Pinecone environment
 
 # Initialize Pinecone
-pinecone.init(api_key=PINECONE_API_KEY, environment="us-east-1-aws")
+pinecone.init(api_key=PINECONE_API_KEY, environment=PINECONE_ENVIRONMENT)
 
 # Check if the index exists, if not, create it
 if INDEX_NAME not in pinecone.list_indexes():
     pinecone.create_index(
         name=INDEX_NAME,
         dimension=1536,  # OpenAI embeddings are 1536 dimensions
-        metric='cosine',
-        spec=pinecone.ServerlessSpec(
-            cloud='aws',
-            region='us-east-1'
-        )
+        metric='cosine'
     )
-    print(f"Created new serverless index: {INDEX_NAME}")
+    print(f"Created new index: {INDEX_NAME}")
 else:
     print(f"Index {INDEX_NAME} already exists")
 
