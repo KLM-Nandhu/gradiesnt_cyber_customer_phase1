@@ -5,8 +5,6 @@ from openai import OpenAI
 import io
 import time
 import os
-from langchain.callbacks import tracing_enabled
-from functools import wraps
 
 os.environ["LANGCHAIN_TRACING_V2"] = "true"
 os.environ["LANGCHAIN_ENDPOINT"] = "https://api.smith.langchain.com"
@@ -15,13 +13,14 @@ os.environ["LANGCHAIN_PROJECT"] = "gradient_cyber_bot"
 # Securely set the API key from Streamlit secrets
 os.environ["LANGCHAIN_API_KEY"] = st.secrets["LANGCHAIN_API_KEY"]
 
+
 # Set page configuration
 st.set_page_config(layout="wide", page_title="Gradient Cyber Bot", page_icon="🤖")
 
 # Custom CSS for improved UI
 st.markdown(
     """
-      <style>
+    <style>
     @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap');
     
     body {
@@ -176,27 +175,6 @@ except Exception as e:
     st.sidebar.error(f"Error connecting to index: {str(e)}")
     st.stop()
 
-# Tracing function
-def trace(name=None):
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            with tracing_enabled() as cb:
-                result = func(*args, **kwargs)
-                
-                # Use Streamlit to display tracing information
-                st.write(f"Function: {name or func.__name__}")
-                st.write(f"Total Tokens: {cb.total_tokens}")
-                st.write(f"Prompt Tokens: {cb.prompt_tokens}")
-                st.write(f"Completion Tokens: {cb.completion_tokens}")
-                st.write(f"Total Cost (USD): ${cb.total_cost}")
-                st.write(f"Successful Requests: {cb.successful_requests}")
-                
-                return result
-        return wrapper
-    return decorator if name else decorator(None)
-
-@trace("extract_text")
 def extract_text_from_pdf(pdf_file):
     pdf_reader = PdfReader(pdf_file)
     text = ""
@@ -207,7 +185,6 @@ def extract_text_from_pdf(pdf_file):
 def create_chunks(text, chunk_size=1000):
     return [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
 
-@trace("upsert_to_pinecone")
 def upsert_to_pinecone(chunks, pdf_name):
     batch_size = 50
     total_chunks = len(chunks)
@@ -248,7 +225,6 @@ def upsert_to_pinecone(chunks, pdf_name):
         time.sleep(1)
     return True
 
-@trace("answer_question")
 def answer_question(question):
     try:
         # Get the embedding for the question
@@ -294,7 +270,6 @@ def answer_question(question):
         st.error(f"An unexpected error occurred: {str(e)}")
         return f"I'm sorry, but I encountered an unexpected error while answering your question: {str(e)}"
 
-@trace("format_answer")
 def format_answer(answer, sources):
     prompt = f"""
     Format the following answer in an attractive and easy-to-read manner. 
