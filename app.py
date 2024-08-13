@@ -38,7 +38,7 @@ st.markdown(
         max-width: 900px;
         padding-top: 2rem;
         padding-bottom: 6rem;
-        margin: auto;
+        margin: auto.
     }
     .stChatMessage {
         background-color: #ffffff;
@@ -83,11 +83,11 @@ st.markdown(
         border: 2px solid #2196F3;
         padding: 0.75rem 1.5rem;
         font-size: 1rem;
-        transition: all 0.3s ease;
+        transition: all 0.3s ease.
     }
     .stTextInput input:focus {
         box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.3);
-        outline: none;
+        outline: none.
     }
     .stButton button {
         border-radius: 25px;
@@ -96,11 +96,11 @@ st.markdown(
         color: white;
         font-weight: bold;
         border: none;
-        transition: all 0.3s ease;
+        transition: all 0.3s ease.
     }
     .stButton button:hover {
         background-color: #1976D2;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2).
     }
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
@@ -110,20 +110,20 @@ st.markdown(
         padding: 2rem;
         margin-bottom: 1.5rem;
         box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        border-left: 5px solid #4CAF50;
+        border-left: 5px solid #4CAF50.
     }
     .answer-card h3 {
         color: #2c3e50;
         margin-bottom: 1rem;
-        font-weight: 700;
+        font-weight: 700.
     }
     .source-list {
         margin-top: 1rem;
-        padding-left: 1.5rem;
+        padding-left: 1.5rem.
     }
     .source-list li {
         margin-bottom: 0.5rem;
-        color: #546E7A;
+        color: #546E7A.
     }
     #scroll-to-bottom {
         position: fixed;
@@ -142,11 +142,11 @@ st.markdown(
         cursor: pointer;
         box-shadow: 0 2px 5px rgba(0,0,0,0.2);
         transition: all 0.3s ease;
-        z-index: 9999;
+        z-index: 9999.
     }
     #scroll-to-bottom:hover {
         background-color: #1976D2;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.3).
     }
     </style>
     """,
@@ -261,14 +261,14 @@ def answer_question(question):
         st_callback = StreamlitCallbackHandler(st.container())
         
         # Use the correct input format for the qa_chain
-        result = qa_chain({"question": question}, callbacks=[st_callback])
+        result = qa_chain({"query": question}, callbacks=[st_callback])
         
         if 'result' not in result or 'source_documents' not in result:
             raise KeyError("Expected keys 'result' and 'source_documents' not found in the chain output")
 
         answer = result['result']
         sources = list(set([doc.metadata.get('source', 'Unknown') for doc in result['source_documents']]))
-        
+
         # Format the answer
         formatted_answer = format_answer(answer, sources)
         
@@ -354,7 +354,7 @@ st.markdown(
         if ((window.innerHeight + window.pageYOffset) < document.body.offsetHeight - 100) {
             scrollButton.style.display = 'flex';
         } else {
-            scrollButton.style.display = 'none';
+            scrollButton.style.display = 'none'.
         }
     }
 
