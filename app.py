@@ -151,6 +151,8 @@ st.markdown(
 # Initialize session state
 if 'chat_history' not in st.session_state:
     st.session_state['chat_history'] = []
+if 'waiting_for_answer' not in st.session_state:
+    st.session_state['waiting_for_answer'] = False
 
 # Streamlit app title
 st.title("🤖 Gradient Cyber Bot")
@@ -341,6 +343,7 @@ with st.sidebar:
     
     if st.button("Reset Chat"):
         st.session_state['chat_history'] = []
+        st.session_state['waiting_for_answer'] = False
         st.rerun()
 
 # Scroll to bottom button and JavaScript
@@ -392,22 +395,27 @@ question = st.chat_input("Ask a question about the uploaded documents:")
 if question:
     # Add user message to chat history
     st.session_state['chat_history'].append({"role": "user", "content": question})
-    
+    st.session_state['waiting_for_answer'] = True
+    st.rerun()
+
+# Check if we're waiting for an answer
+if st.session_state['waiting_for_answer']:
     # Display user message
     with st.chat_message("user"):
-        st.markdown(question)
+        st.markdown(st.session_state['chat_history'][-1]["content"])
 
-   # Get bot response
+    # Get bot response
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
         
         with st.spinner("Searching for an answer..."):
-            answer = answer_question(question)
+            answer = answer_question(st.session_state['chat_history'][-1]["content"])
         
         message_placeholder.markdown(f'<div class="answer-card">{answer}</div>', unsafe_allow_html=True)
         
         # Add assistant message to chat history
         st.session_state['chat_history'].append({"role": "assistant", "content": answer})
-
-    # Force a rerun to update the chat history display
+    
+    # Reset the waiting flag
+    st.session_state['waiting_for_answer'] = False
     st.rerun()
