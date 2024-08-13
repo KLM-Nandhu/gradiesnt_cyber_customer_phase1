@@ -260,8 +260,8 @@ def answer_question(question):
     try:
         st_callback = StreamlitCallbackHandler(st.container())
         
-        # Use keyword arguments for the qa_chain call
-        result = qa_chain(query=question, callbacks=[st_callback])
+        # Use the correct input format for the qa_chain
+        result = qa_chain({"question": question}, callbacks=[st_callback])
         
         answer = result['result']
         sources = list(set([doc.metadata['source'] for doc in result['source_documents']]))
