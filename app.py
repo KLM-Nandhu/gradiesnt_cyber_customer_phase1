@@ -377,7 +377,7 @@ with st.sidebar:
                      st.write(f"Extracting text from {uploaded_file.name}...")
                      pdf_text = extract_text_from_pdf(io.BytesIO(uploaded_file.read()))
                     
-                    if pdf_text:
+                     if pdf_text:
                         st.write("Creating chunks...")
                         chunks = create_chunks(pdf_text)
                         
