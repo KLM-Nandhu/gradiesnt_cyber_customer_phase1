@@ -10,12 +10,16 @@ from langchain.embeddings import OpenAIEmbeddings
 from langchain.vectorstores import Pinecone as LangchainPinecone
 from langchain.callbacks import StreamlitCallbackHandler
 import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Set LangChain environment variables
 os.environ["LANGCHAIN_TRACING_V2"] = "true"
 os.environ["LANGCHAIN_ENDPOINT"] = "https://api.smith.langchain.com"
-os.environ["LANGCHAIN_API_KEY"] = ["LANGCHAIN_API_KEY"]
-os.environ["LANGCHAIN_PROJECT"] = "grdient_cyber_bot"
+os.environ["LANGCHAIN_API_KEY"] = os.getenv("LANGCHAIN_API_KEY")
+os.environ["LANGCHAIN_PROJECT"] = "gradient_cyber_bot"
 
 # Set page configuration
 st.set_page_config(layout="wide", page_title="Gradient Cyber Bot", page_icon="🤖")
@@ -160,39 +164,46 @@ if 'chat_history' not in st.session_state:
 # Streamlit app title
 st.title("🤖 Gradient Cyber Bot")
 
-# Initialize Pinecone and OpenAI with hardcoded values
-PINECONE_API_KEY = ["PINECONE_API_KEY"]
-OPENAI_API_KEY = ["OPENAI_API_KEY"]
+# Initialize Pinecone and OpenAI with environment variables
+PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 INDEX_NAME = "gradientcyber"
+PINECONE_ENVIRONMENT = os.getenv("PINECONE_ENVIRONMENT")
 
 # Initialize clients
-pc = Pinecone(api_key=PINECONE_API_KEY)
-openai_client = OpenAI(api_key=OPENAI_API_KEY)
-
-# Try to initialize the index, handle potential errors
 try:
-    index = pc.Index(INDEX_NAME)
+    pc = Pinecone(api_key=PINECONE_API_KEY)
+    index = pc.Index(INDEX_NAME, environment=PINECONE_ENVIRONMENT)
+    openai_client = OpenAI(api_key=OPENAI_API_KEY)
 except Exception as e:
-    st.sidebar.error(f"Error connecting to index: {str(e)}")
+    st.error(f"Error initializing clients: {str(e)}")
     st.stop()
 
 # Initialize LangChain components
-embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
-vectorstore = LangchainPinecone(index, embeddings.embed_query, "text")
-llm = ChatOpenAI(temperature=0.3, model_name="gpt-4o", openai_api_key=OPENAI_API_KEY)
-qa_chain = RetrievalQA.from_chain_type(
-    llm=llm,
-    chain_type="stuff",
-    retriever=vectorstore.as_retriever(search_kwargs={"k": 30}),
-    return_source_documents=True,
-)
+try:
+    embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
+    vectorstore = LangchainPinecone(index, embeddings.embed_query, "text")
+    llm = ChatOpenAI(temperature=0.3, model_name="gpt-3.5-turbo", openai_api_key=OPENAI_API_KEY)
+    qa_chain = RetrievalQA.from_chain_type(
+        llm=llm,
+        chain_type="stuff",
+        retriever=vectorstore.as_retriever(search_kwargs={"k": 30}),
+        return_source_documents=True,
+    )
+except Exception as e:
+    st.error(f"Error initializing LangChain components: {str(e)}")
+    st.stop()
 
 def extract_text_from_pdf(pdf_file):
-    pdf_reader = PdfReader(pdf_file)
-    text = ""
-    for page in pdf_reader.pages:
-        text += page.extract_text() + " "
-    return text
+    try:
+        pdf_reader = PdfReader(pdf_file)
+        text = ""
+        for page in pdf_reader.pages:
+            text += page.extract_text() + " "
+        return text
+    except Exception as e:
+        st.error(f"Error extracting text from PDF: {str(e)}")
+        return None
 
 def create_chunks(text, chunk_size=1000):
     return [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
@@ -242,12 +253,16 @@ def format_answer(answer, sources):
 
     Sources: {', '.join(sources)}
     """
-    response = openai_client.chat.completions.create(
-        model="gpt-4o",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.3
-    )
-    return response.choices[0].message.content
+    try:
+        response = openai_client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        st.error(f"Error formatting answer: {str(e)}")
+        return answer
 
 def answer_question(question):
     try:
@@ -272,12 +287,16 @@ def format_conversation_history(history):
     Conversation History:
     {history}
     """
-    response = openai_client.chat.completions.create(
-        model="gpt-4o",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.3
-    )
-    return response.choices[0].message.content
+    try:
+        response = openai_client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        st.error(f"Error formatting conversation history: {str(e)}")
+        return history
 
 # Sidebar for file upload and buttons
 with st.sidebar:
@@ -294,16 +313,19 @@ with st.sidebar:
                     st.write(f"Extracting text from {uploaded_file.name}...")
                     pdf_text = extract_text_from_pdf(io.BytesIO(uploaded_file.read()))
                     
-                    st.write("Creating chunks...")
-                    chunks = create_chunks(pdf_text)
-                    
-                    st.write(f"Upserting {len(chunks)} chunks to Pinecone...")
-                    success = upsert_to_pinecone(chunks, uploaded_file.name)
-                    
-                    if success:
-                        st.success(f"Successfully processed {uploaded_file.name}")
+                    if pdf_text:
+                        st.write("Creating chunks...")
+                        chunks = create_chunks(pdf_text)
+                        
+                        st.write(f"Upserting {len(chunks)} chunks to Pinecone...")
+                        success = upsert_to_pinecone(chunks, uploaded_file.name)
+                        
+                        if success:
+                            st.success(f"Successfully processed {uploaded_file.name}")
+                        else:
+                            st.error(f"Failed to process {uploaded_file.name}")
                     else:
-                        st.error(f"Failed to process {uploaded_file.name}")
+                        st.error(f"Failed to extract text from {uploaded_file.name}")
                 
                 overall_progress.progress((i + 1) / len(uploaded_files))
             
@@ -367,24 +389,4 @@ for message in st.session_state['chat_history']:
         st.markdown(message["content"])
 
 # Chat input
-question = st.chat_input("Ask a question about the uploaded documents:")
-
-if question:
-    # Add user message to chat history
-    st.session_state['chat_history'].append({"role": "user", "content": question})
-    
-    # Display user message
-    with st.chat_message("user"):
-        st.markdown(question)
-
-    # Get bot response
-    with st.chat_message("assistant"):
-        message_placeholder = st.empty()
-        
-        with st.spinner("Searching for an answer..."):
-            answer = answer_question(question)
-        
-        message_placeholder.markdown(f'<div class="answer-card">{answer}</div>', unsafe_allow_html=True)
-        
-        # Add assistant message to chat history
-        st.session_state['chat_history'].append({"role": "assistant", "content": answer})
+question = st.chat_input("Ask a question about the uploaded documents
