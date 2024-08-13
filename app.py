@@ -178,11 +178,8 @@ try:
     pinecone.init(api_key=PINECONE_API_KEY)
     st.write("Initializing serverless Pinecone database...")
     
-    # Initialize Pinecone index with serverless configuration
-    index = pinecone.Index(
-        PINECONE_INDEX_NAME,
-        host="https://gradientcyber-z1co3qo.svc.aped-4627-b74a.pinecone.io"
-    )
+    # Initialize Pinecone index for serverless configuration
+    index = pinecone.Index(PINECONE_INDEX_NAME)
     st.write(f"Successfully connected to serverless Pinecone index: {PINECONE_INDEX_NAME}")
     
     openai_client = OpenAI(api_key=OPENAI_API_KEY)
@@ -194,7 +191,7 @@ except Exception as e:
 try:
     embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
     vectorstore = LangchainPinecone(index, embeddings.embed_query, "text")
-    llm = ChatOpenAI(temperature=0.3, model_name="gpt-4", openai_api_key=OPENAI_API_KEY)
+    llm = ChatOpenAI(temperature=0.3, model_name="gpt-4o", openai_api_key=OPENAI_API_KEY)
     qa_chain = RetrievalQA.from_chain_type(
         llm=llm,
         chain_type="stuff",
@@ -266,7 +263,7 @@ def format_answer(answer, sources):
     """
     try:
         response = openai_client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4o",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3
         )
@@ -301,7 +298,7 @@ def format_conversation_history(history):
     """
     try:
         response = openai_client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4o",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3
         )
