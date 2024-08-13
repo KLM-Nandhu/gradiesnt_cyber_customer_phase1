@@ -168,84 +168,22 @@ st.title("🤖 Gradient Cyber Bot")
 # Initialize Pinecone and OpenAI with environment variables
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-INDEX_NAME = "gradientcyber"  # Replace with an existing index name if available
-PINECONE_ENVIRONMENT = "us-east-1-aws"  # or your specific Pinecone environment
+INDEX_NAME = "gradientcyber"
+PINECONE_ENVIRONMENT = os.getenv("PINECONE_ENVIRONMENT")
 
-# Function to initialize Pinecone with error handling
-def initialize_pinecone():
-    try:
-        pinecone.init(api_key=PINECONE_API_KEY, environment=PINECONE_ENVIRONMENT)
-        st.success("Pinecone initialized successfully")
-    except Exception as e:
-        st.error(f"Error initializing Pinecone: {str(e)}")
-        st.stop()
-
-# Function to create or connect to Pinecone index with error handling
-def setup_pinecone_index():
-    try:
-        # Check if the index exists
-        existing_indexes = pinecone.list_indexes()
-        if INDEX_NAME not in existing_indexes:
-            st.info(f"Creating new Pinecone index: {INDEX_NAME}")
-            pinecone.create_index(
-                name=INDEX_NAME,
-                dimension=1536,  # OpenAI embeddings are 1536 dimensions
-                metric='cosine'
-            )
-            st.success(f"Successfully created new index: {INDEX_NAME}")
-        else:
-            st.info(f"Connecting to existing Pinecone index: {INDEX_NAME}")
-
-        # Connect to the index
-        index = pinecone.Index(INDEX_NAME)
-        st.success(f"Successfully connected to index: {INDEX_NAME}")
-        return index
-    except pinecone.core.client.exceptions.ApiException as e:
-        if "You've reach the max pod-based indexes allowed" in str(e):
-            st.error("Error: Maximum number of pod-based indexes reached in your Pinecone project.")
-            st.error("To resolve this issue, you can:")
-            st.error("1. Delete unused indexes from your Pinecone project.")
-            st.error("2. Upgrade your Pinecone plan to allow for more indexes.")
-            st.error("3. Use an existing index instead of creating a new one.")
-            
-            # Attempt to use an existing index
-            existing_indexes = pinecone.list_indexes()
-            if existing_indexes:
-                st.info(f"Attempting to use existing index: {existing_indexes[0]}")
-                index = pinecone.Index(existing_indexes[0])
-                st.success(f"Successfully connected to existing index: {existing_indexes[0]}")
-                return index
-            else:
-                st.error("No existing indexes found. Please resolve the index limit issue and try again.")
-        else:
-            st.error(f"Pinecone API Error: {str(e)}")
-            st.error("Please check your Pinecone API key and environment settings.")
-        st.stop()
-    except Exception as e:
-        st.error(f"Error setting up Pinecone index: {str(e)}")
-        st.stop()
-
-# Initialize Pinecone
-initialize_pinecone()
-
-# Setup Pinecone index
-index = setup_pinecone_index()
-
-# Initialize OpenAI client
+# Initialize clients
 try:
+    pinecone.init(api_key=PINECONE_API_KEY, environment=PINECONE_ENVIRONMENT)
+    index = pinecone.Index(INDEX_NAME)
     openai_client = OpenAI(api_key=OPENAI_API_KEY)
 except Exception as e:
-    st.error(f"Error initializing OpenAI client: {str(e)}")
+    st.error(f"Error initializing clients: {str(e)}")
     st.stop()
 
 # Initialize LangChain components
 try:
     embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
-    vectorstore = LangchainPinecone.from_existing_index(
-        index_name=INDEX_NAME,
-        embedding=embeddings,
-        text_key="text"
-    )
+    vectorstore = LangchainPinecone(index, embeddings.embed_query, "text")
     llm = ChatOpenAI(temperature=0.3, model_name="gpt-3.5-turbo", openai_api_key=OPENAI_API_KEY)
     qa_chain = RetrievalQA.from_chain_type(
         llm=llm,
@@ -339,8 +277,7 @@ def answer_question(question):
         
         return formatted_answer
     except Exception as e:
-        st.error(f"Error in answer_question: {str(e)}")
-        return f"I'm sorry, but I encountered an error while trying to answer your question. Error: {str(e)}"
+        return f"Error: {str(e)}"
 
 def format_conversation_history(history):
     prompt = f"""
@@ -481,6 +418,3 @@ if st.session_state.get("show_error", False):
     st.session_state.show_error = False
 
 # You can add any additional error handling or logging here if needed
-
-if __name__ == "__main__":
-    st.write("Gradient Cyber Bot is ready to assist you!")       
