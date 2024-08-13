@@ -4,7 +4,7 @@ import time
 import os
 from dotenv import load_dotenv
 import pinecone 
-from pinecone import Pinecone, Serverless
+from pinecone import Pinecone, ServerlessSpec
 from PyPDF2 import PdfReader
 from openai import OpenAI
 from langchain.chat_models import ChatOpenAI
