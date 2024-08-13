@@ -1,5 +1,5 @@
 import streamlit as st
-from pinecone import Pinecone
+import pinecone
 from PyPDF2 import PdfReader
 from openai import OpenAI
 import io
@@ -172,12 +172,13 @@ PINECONE_ENVIRONMENT = os.getenv("PINECONE_ENVIRONMENT")
 
 # Initialize clients
 try:
-    pc = Pinecone(api_key=PINECONE_API_KEY)
-    index = pc.Index(INDEX_NAME)
+    pinecone.init(api_key=PINECONE_API_KEY, environment=PINECONE_ENVIRONMENT)
+    index = pinecone.Index(INDEX_NAME)
     openai_client = OpenAI(api_key=OPENAI_API_KEY)
 except Exception as e:
     st.error(f"Error initializing clients: {str(e)}")
     st.stop()
+
 
 # Initialize LangChain components
 try:
