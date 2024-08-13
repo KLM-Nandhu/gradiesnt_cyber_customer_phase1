@@ -1,10 +1,9 @@
 import streamlit as st
-import pinecone
+from pinecone import Pinecone
 from PyPDF2 import PdfReader
 from openai import OpenAI
 import io
 import time
-import tiktoken
 from langchain.chat_models import ChatOpenAI
 from langchain.chains import RetrievalQA
 from langchain.embeddings import OpenAIEmbeddings
@@ -173,8 +172,8 @@ PINECONE_ENVIRONMENT = os.getenv("PINECONE_ENVIRONMENT")
 
 # Initialize clients
 try:
-    pinecone.init(api_key=PINECONE_API_KEY, environment=PINECONE_ENVIRONMENT)
-    index = pinecone.Index(INDEX_NAME)
+    pc = Pinecone(api_key=PINECONE_API_KEY)
+    index = pc.Index(INDEX_NAME)
     openai_client = OpenAI(api_key=OPENAI_API_KEY)
 except Exception as e:
     st.error(f"Error initializing clients: {str(e)}")
@@ -184,7 +183,7 @@ except Exception as e:
 try:
     embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
     vectorstore = LangchainPinecone(index, embeddings.embed_query, "text")
-    llm = ChatOpenAI(temperature=0.3, model_name="gpt-3.5-turbo", openai_api_key=OPENAI_API_KEY)
+    llm = ChatOpenAI(temperature=0.3, model_name="gpt-4", openai_api_key=OPENAI_API_KEY)
     qa_chain = RetrievalQA.from_chain_type(
         llm=llm,
         chain_type="stuff",
@@ -256,7 +255,7 @@ def format_answer(answer, sources):
     """
     try:
         response = openai_client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model="gpt-4",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3
         )
@@ -277,7 +276,8 @@ def answer_question(question):
         
         return formatted_answer
     except Exception as e:
-        return f"Error: {str(e)}"
+        st.error(f"Error in answer_question: {str(e)}")
+        return f"I'm sorry, but I encountered an error while trying to answer your question. Error: {str(e)}"
 
 def format_conversation_history(history):
     prompt = f"""
@@ -290,7 +290,7 @@ def format_conversation_history(history):
     """
     try:
         response = openai_client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model="gpt-4",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3
         )
@@ -383,7 +383,6 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-
 # Display chat messages
 for message in st.session_state['chat_history']:
     with st.chat_message(message["role"]):
@@ -418,3 +417,6 @@ if st.session_state.get("show_error", False):
     st.session_state.show_error = False
 
 # You can add any additional error handling or logging here if needed
+
+if __name__ == "__main__":
+    st.write("Gradient Cyber Bot is ready to assist you!")
