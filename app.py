@@ -10,7 +10,7 @@ import os
 os.environ["LANGCHAIN_TRACING_V2"] = "true"
 os.environ["LANGCHAIN_ENDPOINT"] = "https://api.smith.langchain.com"
 os.environ["LANGCHAIN_API_KEY"] = st.secrets["LANGCHAIN_API_KEY"]
-os.environ["LANGCHAIN_PROJECT"] = "grdient_cyber_bot"
+os.environ["LANGCHAIN_PROJECT"] = "gradient_cyber_bot"
 
 # Set page configuration
 st.set_page_config(layout="wide", page_title="Gradient Cyber Bot", page_icon="🤖")
@@ -164,11 +164,12 @@ INDEX_NAME = "gradientcyber"
 pc = Pinecone(api_key=PINECONE_API_KEY)
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
-# Try to initialize the index, handle potential errors
+# Ensure Pinecone index and OpenAI client are initialized correctly
 try:
     index = pc.Index(INDEX_NAME)
+    st.sidebar.success("Pinecone index connected successfully.")
 except Exception as e:
-    st.sidebar.error(f"Error connecting to index: {str(e)}")
+    st.sidebar.error(f"Error connecting to Pinecone index: {str(e)}")
     st.stop()
 
 def extract_text_from_pdf(pdf_file):
@@ -250,7 +251,7 @@ def answer_question(question):
         
         # Generate answer using OpenAI
         response = openai_client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3
         )
@@ -294,7 +295,7 @@ def format_conversation_history(history):
     {history}
     """
     response = openai_client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-4",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3
     )
@@ -390,24 +391,25 @@ for message in st.session_state['chat_history']:
 question = st.chat_input("Ask a question about the uploaded documents:")
 
 if question:
-    # Add user message to chat history
-    st.session_state['chat_history'].append({"role": "user", "content": question})
-    
-    # Display user message
-      with st.chat_message("user"):
-        st.markdown(question)
+    # Ensure index is ready before answering the first question
+    if len(st.session_state['chat_history']) == 0 and index.describe_index_stats().total_vector_count == 0:
+        st.error("No data is available to answer questions yet. Please upload and process some documents first.")
+    else:
+        # Add user message to chat history
+        st.session_state['chat_history'].append({"role": "user", "content": question})
+        
+        # Display user message
+        with st.chat_message("user"):
+            st.markdown(question)
 
-    # Get bot response
-    with st.chat_message("assistant"):
-        message_placeholder = st.empty()
-        
-        with st.spinner("Searching for an answer..."):
-            answer = answer_question(question)
-        
-        message_placeholder.markdown(f'<div class="answer-card">{answer}</div>', unsafe_allow_html=True)
-        
-        # Add assistant message to chat history
-        st.session_state['chat_history'].append({"role": "assistant", "content": answer})
-
-    # Force a rerun to update the chat history display
-    st.rerun()
+        # Get bot response
+        with st.chat_message("assistant"):
+            message_placeholder = st.empty()
+            
+            with st.spinner("Searching for an answer..."):
+                answer = answer_question(question)
+            
+            message_placeholder.markdown(f'<div class="answer-card">{answer}</div>', unsafe_allow_html=True)
+            
+            # Add assistant message to chat history
+            st.session_state['chat_history'].append({"role": "assistant", "content": answer})
