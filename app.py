@@ -168,7 +168,7 @@ st.title("🤖 Gradient Cyber Bot")
 # Initialize Pinecone and OpenAI with environment variables
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-INDEX_NAME = "gradientcyber"
+INDEX_NAME = "gradientcyber"  # Replace with an existing index name if available
 PINECONE_ENVIRONMENT = "us-east-1-aws"  # or your specific Pinecone environment
 
 # Function to initialize Pinecone with error handling
@@ -201,8 +201,25 @@ def setup_pinecone_index():
         st.success(f"Successfully connected to index: {INDEX_NAME}")
         return index
     except pinecone.core.client.exceptions.ApiException as e:
-        st.error(f"Pinecone API Error: {str(e)}")
-        st.error("Please check your Pinecone API key and environment settings.")
+        if "You've reach the max pod-based indexes allowed" in str(e):
+            st.error("Error: Maximum number of pod-based indexes reached in your Pinecone project.")
+            st.error("To resolve this issue, you can:")
+            st.error("1. Delete unused indexes from your Pinecone project.")
+            st.error("2. Upgrade your Pinecone plan to allow for more indexes.")
+            st.error("3. Use an existing index instead of creating a new one.")
+            
+            # Attempt to use an existing index
+            existing_indexes = pinecone.list_indexes()
+            if existing_indexes:
+                st.info(f"Attempting to use existing index: {existing_indexes[0]}")
+                index = pinecone.Index(existing_indexes[0])
+                st.success(f"Successfully connected to existing index: {existing_indexes[0]}")
+                return index
+            else:
+                st.error("No existing indexes found. Please resolve the index limit issue and try again.")
+        else:
+            st.error(f"Pinecone API Error: {str(e)}")
+            st.error("Please check your Pinecone API key and environment settings.")
         st.stop()
     except Exception as e:
         st.error(f"Error setting up Pinecone index: {str(e)}")
@@ -357,7 +374,7 @@ with st.sidebar:
             overall_progress = st.progress(0)
             for i, uploaded_file in enumerate(uploaded_files):
                 with st.expander(f"Processing {uploaded_file.name}", expanded=True):
-                    st.write(f"Extracting text from {uploaded_file.name}...")
+             st.write(f"Extracting text from {uploaded_file.name}...")
                     pdf_text = extract_text_from_pdf(io.BytesIO(uploaded_file.read()))
                     
                     if pdf_text:
@@ -466,4 +483,4 @@ if st.session_state.get("show_error", False):
 # You can add any additional error handling or logging here if needed
 
 if __name__ == "__main__":
-    st.write("Gradient Cyber Bot is ready to assist you!")
+    st.write("Gradient Cyber Bot is ready to assist you!")       
