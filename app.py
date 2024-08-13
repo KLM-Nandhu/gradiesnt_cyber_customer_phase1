@@ -1,5 +1,5 @@
 import streamlit as st
-from pinecone import Pinecone
+from pinecone import Pinecone, ServerlessSpec
 from PyPDF2 import PdfReader
 from openai import OpenAI
 import io
@@ -180,10 +180,14 @@ except Exception as e:
 embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
 vectorstore = LangchainPinecone(index, embeddings.embed_query, "text")
 llm = ChatOpenAI(temperature=0.3, model_name="gpt-4", openai_api_key=OPENAI_API_KEY)
+
+# Update the retriever to use keyword arguments
+retriever = vectorstore.as_retriever(search_kwargs={"k": 30})
+
 qa_chain = RetrievalQA.from_chain_type(
     llm=llm,
     chain_type="stuff",
-    retriever=vectorstore.as_retriever(search_kwargs={"k": 30}),
+    retriever=retriever,
     return_source_documents=True,
 )
 
@@ -215,6 +219,7 @@ def upsert_to_pinecone(chunks, pdf_name):
                 for id, embedding, chunk in zip(ids, embeddings_batch, batch)
             ]
             
+            # Update the upsert method to use keyword arguments
             index.upsert(vectors=to_upsert)
             
             chunk_counter += len(batch)
@@ -387,7 +392,4 @@ if question:
         with st.spinner("Searching for an answer..."):
             answer = answer_question(question)
         
-        message_placeholder.markdown(f'<div class="answer-card">{answer}</div>', unsafe_allow_html=True)
-        
-        # Add assistant message to chat history
-        st.session_state['chat_history'].append({"role": "assistant", "content": answer})
+        message_placeholder.markdown(f'<div class="answer-card">{answer}</div>', unsafe_allow_html=
