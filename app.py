@@ -394,7 +394,7 @@ if question:
     st.session_state['chat_history'].append({"role": "user", "content": question})
     
     # Display user message
-    with st.chat_message("user"):
+      with st.chat_message("user"):
         st.markdown(question)
 
     # Get bot response
@@ -408,3 +408,6 @@ if question:
         
         # Add assistant message to chat history
         st.session_state['chat_history'].append({"role": "assistant", "content": answer})
+
+    # Force a rerun to update the chat history display
+    st.rerun()
