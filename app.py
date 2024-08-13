@@ -1,5 +1,5 @@
 import streamlit as st
-from pinecone import Pinecone, ServerlessSpec
+from pinecone import Pinecone
 from PyPDF2 import PdfReader
 from openai import OpenAI
 import io
@@ -7,14 +7,14 @@ import time
 from langchain.chat_models import ChatOpenAI
 from langchain.chains import RetrievalQA
 from langchain.embeddings import OpenAIEmbeddings
-from langchain.vectorstores import Pinecone as LangchainPinecone
 from langchain.callbacks import StreamlitCallbackHandler
+from langchain.schema import Document
 import os
 
 # Set LangChain environment variables
 os.environ["LANGCHAIN_TRACING_V2"] = "true"
 os.environ["LANGCHAIN_ENDPOINT"] = "https://api.smith.langchain.com"
-os.environ["LANGCHAIN_API_KEY"] = st.secrets["LANGCHAIN_API_KEY"]
+os.environ["LANGCHAIN_API_KEY"] = "LANGCHAIN_API_KEY"
 os.environ["LANGCHAIN_PROJECT"] = "grdient_cyber_bot"
 
 # Set page configuration
@@ -160,10 +160,22 @@ if 'chat_history' not in st.session_state:
 # Streamlit app title
 st.title("🤖 Gradient Cyber Bot")
 
-# Initialize Pinecone and OpenAI with environment variables
-PINECONE_API_KEY = st.secrets["PINECONE_API_KEY"]
-OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
+# Initialize Pinecone and OpenAI with hardcoded values
+PINECONE_API_KEY = "PINECONE_API_KEY"
+OPENAI_API_KEY = "OPENAI_API_KEY"
 INDEX_NAME = "gradientcyber"
+
+# Custom Pinecone Retriever
+class CustomPineconeRetriever:
+    def __init__(self, index, embedding_function):
+        self.index = index
+        self.embedding_function = embedding_function
+
+    def get_relevant_documents(self, query):
+        query_embedding = self.embedding_function(query)
+        results = self.index.query(vector=query_embedding, top_k=30, include_metadata=True)
+        return [Document(page_content=match['metadata']['text'], metadata={'source': match['metadata']['source']}) 
+                for match in results['matches']]
 
 # Initialize clients
 pc = Pinecone(api_key=PINECONE_API_KEY)
@@ -178,16 +190,15 @@ except Exception as e:
 
 # Initialize LangChain components
 embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
-vectorstore = LangchainPinecone(index, embeddings.embed_query, "text")
 llm = ChatOpenAI(temperature=0.3, model_name="gpt-4", openai_api_key=OPENAI_API_KEY)
 
-# Update the retriever to use keyword arguments
-retriever = vectorstore.as_retriever(search_kwargs={"k": 30})
+# Use custom retriever
+custom_retriever = CustomPineconeRetriever(index, embeddings.embed_query)
 
 qa_chain = RetrievalQA.from_chain_type(
     llm=llm,
     chain_type="stuff",
-    retriever=retriever,
+    retriever=custom_retriever,
     return_source_documents=True,
 )
 
@@ -219,7 +230,6 @@ def upsert_to_pinecone(chunks, pdf_name):
                 for id, embedding, chunk in zip(ids, embeddings_batch, batch)
             ]
             
-            # Update the upsert method to use keyword arguments
             index.upsert(vectors=to_upsert)
             
             chunk_counter += len(batch)
@@ -261,15 +271,12 @@ def answer_question(question):
         answer = result['result']
         sources = list(set([doc.metadata['source'] for doc in result['source_documents']]))
         
-        if not sources or answer.strip().lower() in ["i don't know", "i do not know", "no information available"]:
-            return "I'm sorry, but I don't have enough information in my database to answer this question accurately. Is there anything else I can help you with?"
-        
         # Format the answer
         formatted_answer = format_answer(answer, sources)
         
         return formatted_answer
     except Exception as e:
-        return f"I encountered an error while trying to answer your question. Error: {str(e)}"
+        return f"Error: {str(e)}"
 
 def format_conversation_history(history):
     prompt = f"""
@@ -354,7 +361,6 @@ st.markdown(
 
     // Add scroll event listener
     window.addEventListener('scroll', toggleScrollButton);
-
     // Add resize event listener to handle window size changes
     window.addEventListener('resize', toggleScrollButton);
 
