@@ -232,6 +232,7 @@ def retrieve_relevant_chunks(question, k=5):
 
 def generate_answer(question, context):
     prompt = f"""
+    convert user query into embedding , and find the relevent embedding in the pinecone and retrive the answer, retrive all the answer from the all relevent chunk.
     Use the following context to answer the question. If the answer is not in the context, say "I don't have enough information to answer that question."
 
     Context:
@@ -243,7 +244,7 @@ def generate_answer(question, context):
     """
     
     response = openai_client.chat.completions.create(
-        model="gpt-4",
+        model="gpt-4o",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3
     )
@@ -292,7 +293,7 @@ def format_conversation_history(history):
     {history}
     """
     response = openai_client.chat.completions.create(
-        model="gpt-4",
+        model="gpt-4o",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3
     )
