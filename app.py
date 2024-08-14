@@ -3,9 +3,11 @@ from pinecone import Pinecone
 from PyPDF2 import PdfReader
 from openai import OpenAI
 from langchain.callbacks import LangChainTracer
+from langchain.schema import LLMResult
 import io
 import time
 import os
+import uuid
 
 # LangSmith setup
 os.environ["LANGCHAIN_TRACING_V2"] = "true"
@@ -261,7 +263,7 @@ def answer_question(question):
         
         # Generate answer using OpenAI
         response = openai_client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3
         )
@@ -272,15 +274,16 @@ def answer_question(question):
         sources = list(set([chunk[:50] + "..." for chunk in relevant_chunks]))
         formatted_answer = format_answer(answer, sources)
         
-        # Log to LangSmith
-        tracer.log_langchain_event(
-            event_type="llm",
-            event_data={
-                "input": prompt,
-                "output": answer,
-                "model": "gpt-4o",
-                "metadata": {"sources": sources}
-            }
+        # Log to LangSmith using the tracer as a callback
+        run_id = str(uuid.uuid4())
+        tracer.on_llm_start(
+            {"name": "gpt-4"},
+            [prompt],
+            run_id=run_id
+        )
+        tracer.on_llm_end(
+            LLMResult(generations=[[answer]], llm_output=None),
+            run_id=run_id
         )
         
         return formatted_answer
@@ -300,7 +303,7 @@ def format_answer(answer, sources):
     Sources: {', '.join(sources)}
     """
     response = openai_client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-4",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3
     )
