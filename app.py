@@ -1,5 +1,5 @@
 import streamlit as st
-from pinecone import Pinecone
+from pinecone import Pinecone, ServerlessSpec
 from PyPDF2 import PdfReader
 from openai import OpenAI
 import io
@@ -20,7 +20,7 @@ st.set_page_config(layout="wide", page_title="Gradient Cyber Bot", page_icon="ðŸ
 # Custom CSS for improved UI
 st.markdown(
     """
-    <style>
+      <style>
     @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap');
     
     body {
@@ -162,13 +162,24 @@ PINECONE_API_KEY = st.secrets["PINECONE_API_KEY"]
 OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
 INDEX_NAME = "gradientcyber"
 
-# Initialize clients
+# Initialize Pinecone client
 pc = Pinecone(api_key=PINECONE_API_KEY)
+
+# Initialize OpenAI client
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
 # Initialize LangChain components
 embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
-vectorstore = LangchainPinecone.from_existing_index(INDEX_NAME, embeddings)
+
+# Initialize Pinecone index
+try:
+    index = pc.Index(INDEX_NAME)
+except Exception as e:
+    st.error(f"Error connecting to Pinecone index: {str(e)}")
+    st.stop()
+
+# Initialize LangChain's Pinecone vectorstore
+vectorstore = LangchainPinecone(index, embeddings.embed_query, "text")
 
 def extract_text_from_pdf(pdf_file):
     pdf_reader = PdfReader(pdf_file)
@@ -198,7 +209,7 @@ def upsert_to_pinecone(chunks, pdf_name):
                 for id, embedding, chunk in zip(ids, embeddings_batch, batch)
             ]
             
-            vectorstore.add_documents(to_upsert)
+            index.upsert(vectors=to_upsert)
             
             chunk_counter += len(batch)
             progress = min(1.0, chunk_counter / total_chunks)
@@ -216,8 +227,8 @@ def upsert_to_pinecone(chunks, pdf_name):
 
 def retrieve_relevant_chunks(question, k=5):
     query_embedding = embeddings.embed_query(question)
-    results = vectorstore.similarity_search_by_vector(query_embedding, k=k)
-    return [doc.page_content for doc in results], [doc.metadata['source'] for doc in results]
+    results = index.query(vector=query_embedding, top_k=k, include_metadata=True)
+    return [match.metadata['text'] for match in results.matches], [match.metadata['source'] for match in results.matches]
 
 def generate_answer(question, context):
     prompt = f"""
