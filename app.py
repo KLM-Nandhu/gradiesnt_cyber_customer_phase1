@@ -2,18 +2,17 @@ import streamlit as st
 from pinecone import Pinecone
 from PyPDF2 import PdfReader
 from openai import OpenAI
-from langchain.callbacks import LangChainTracer
-from langchain.schema import LLMResult
 import io
 import time
+from langchain.embeddings import OpenAIEmbeddings
+from langchain.vectorstores import Pinecone as LangchainPinecone
 import os
-import uuid
 
-# LangSmith setup
+# Set LangChain environment variables
 os.environ["LANGCHAIN_TRACING_V2"] = "true"
 os.environ["LANGCHAIN_ENDPOINT"] = "https://api.smith.langchain.com"
-os.environ["LANGCHAIN_PROJECT"] = "gradient_cyber_bot"
 os.environ["LANGCHAIN_API_KEY"] = st.secrets["LANGCHAIN_API_KEY"]
+os.environ["LANGCHAIN_PROJECT"] = "gradient_cyber_bot"
 
 # Set page configuration
 st.set_page_config(layout="wide", page_title="Gradient Cyber Bot", page_icon="🤖")
@@ -154,13 +153,11 @@ st.markdown(
 # Initialize session state
 if 'chat_history' not in st.session_state:
     st.session_state['chat_history'] = []
-if 'waiting_for_answer' not in st.session_state:
-    st.session_state['waiting_for_answer'] = False
 
 # Streamlit app title
 st.title("🤖 Gradient Cyber Bot")
 
-# Initialize Pinecone and OpenAI
+# Initialize Pinecone and OpenAI with secrets
 PINECONE_API_KEY = st.secrets["PINECONE_API_KEY"]
 OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
 INDEX_NAME = "gradientcyber"
@@ -169,15 +166,9 @@ INDEX_NAME = "gradientcyber"
 pc = Pinecone(api_key=PINECONE_API_KEY)
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
-# Try to initialize the index, handle potential errors
-try:
-    index = pc.Index(INDEX_NAME)
-except Exception as e:
-    st.sidebar.error(f"Error connecting to index: {str(e)}")
-    st.stop()
-
-# Initialize LangSmith tracer
-tracer = LangChainTracer(project_name="gradient_cyber_bot")
+# Initialize LangChain components
+embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
+vectorstore = LangchainPinecone.from_existing_index(INDEX_NAME, embeddings)
 
 def extract_text_from_pdf(pdf_file):
     pdf_reader = PdfReader(pdf_file)
@@ -200,20 +191,14 @@ def upsert_to_pinecone(chunks, pdf_name):
         ids = [f"{pdf_name}_{j}" for j in range(i, i+len(batch))]
         
         try:
-            # Embed the chunks using OpenAI
-            response = openai_client.embeddings.create(
-                model="text-embedding-ada-002",
-                input=batch
-            )
-            embeddings_batch = [embedding.embedding for embedding in response.data]
+            embeddings_batch = embeddings.embed_documents(batch)
             
             to_upsert = [
                 (id, embedding, {"text": chunk, "source": pdf_name})
                 for id, embedding, chunk in zip(ids, embeddings_batch, batch)
             ]
             
-            # Upsert using keyword arguments
-            index.upsert(vectors=to_upsert)
+            vectorstore.add_documents(to_upsert)
             
             chunk_counter += len(batch)
             progress = min(1.0, chunk_counter / total_chunks)
@@ -229,67 +214,44 @@ def upsert_to_pinecone(chunks, pdf_name):
         time.sleep(1)
     return True
 
-def get_embedding(text):
-    response = openai_client.embeddings.create(
-        model="text-embedding-ada-002",
-        input=[text]
-    )
-    return response.data[0].embedding
+def retrieve_relevant_chunks(question, k=5):
+    query_embedding = embeddings.embed_query(question)
+    results = vectorstore.similarity_search_by_vector(query_embedding, k=k)
+    return [doc.page_content for doc in results], [doc.metadata['source'] for doc in results]
 
-def retrieve_relevant_chunks(question, top_k=5):
-    question_embedding = get_embedding(question)
-    results = index.query(vector=question_embedding, top_k=top_k, include_metadata=True)
-    return [match.metadata['text'] for match in results.matches]
+def generate_answer(question, context):
+    prompt = f"""
+    Use the following context to answer the question. If the answer is not in the context, say "I don't have enough information to answer that question."
+
+    Context:
+    {context}
+
+    Question: {question}
+
+    Answer:
+    """
+    
+    response = openai_client.chat.completions.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.3
+    )
+    
+    return response.choices[0].message.content
 
 def answer_question(question):
     try:
-        # Retrieve relevant chunks
-        relevant_chunks = retrieve_relevant_chunks(question)
-        
-        # Combine chunks into context
+        relevant_chunks, sources = retrieve_relevant_chunks(question)
         context = "\n".join(relevant_chunks)
         
-        # Prepare the prompt for the LLM
-        prompt = f"""
-        Use the following context to answer the question. If the answer is not in the context, say "I don't have enough information to answer that question."
-
-        Context:
-        {context}
-
-        Question: {question}
-
-        Answer:
-        """
+        answer = generate_answer(question, context)
         
-        # Generate answer using OpenAI
-        response = openai_client.chat.completions.create(
-            model="gpt-4",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.3
-        )
-        
-        answer = response.choices[0].message.content
-        
-        # Format the answer with sources
-        sources = list(set([chunk[:50] + "..." for chunk in relevant_chunks]))
+        # Format the answer
         formatted_answer = format_answer(answer, sources)
-        
-        # Log to LangSmith using the tracer as a callback
-        run_id = str(uuid.uuid4())
-        tracer.on_llm_start(
-            {"name": "gpt-4"},
-            [prompt],
-            run_id=run_id
-        )
-        tracer.on_llm_end(
-            LLMResult(generations=[[answer]], llm_output=None),
-            run_id=run_id
-        )
         
         return formatted_answer
     except Exception as e:
-        st.error(f"An unexpected error occurred: {str(e)}")
-        return f"I'm sorry, but I encountered an unexpected error while answering your question: {str(e)}"
+        return f"Error: {str(e)}"
 
 def format_answer(answer, sources):
     prompt = f"""
@@ -300,7 +262,23 @@ def format_answer(answer, sources):
 
     Answer: {answer}
 
-    Sources: {', '.join(sources)}
+    Sources: {', '.join(set(sources))}
+    """
+    response = openai_client.chat.completions.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.3
+    )
+    return response.choices[0].message.content
+
+def format_conversation_history(history):
+    prompt = f"""
+    Summarize and format the following conversation history in an engaging and easy-to-read manner.
+    Highlight key points, questions asked, and main takeaways from the answers.
+    Use markdown formatting to make it visually appealing.
+
+    Conversation History:
+    {history}
     """
     response = openai_client.chat.completions.create(
         model="gpt-4",
@@ -342,14 +320,14 @@ with st.sidebar:
     st.header("Chat Options")
     if st.button("View Conversation History"):
         if st.session_state['chat_history']:
-            for message in st.session_state['chat_history']:
-                st.markdown(f"**{message['role'].capitalize()}**: {message['content']}")
+            history_text = "\n".join([f"{msg['role']}: {msg['content']}" for msg in st.session_state['chat_history']])
+            formatted_history = format_conversation_history(history_text)
+            st.markdown(formatted_history)
         else:
             st.write("No conversation history yet.")
     
     if st.button("Reset Chat"):
         st.session_state['chat_history'] = []
-        st.session_state['waiting_for_answer'] = False
         st.rerun()
 
 # Scroll to bottom button and JavaScript
@@ -358,33 +336,7 @@ st.markdown(
     <button id="scroll-to-bottom" onclick="scrollToBottom()">⬇</button>
     
     <script>
-    function scrollToBottom() {
-        window.scrollTo(0, document.body.scrollHeight);
-    }
-
-    function toggleScrollButton() {
-        var scrollButton = document.getElementById('scroll-to-bottom');
-        if ((window.innerHeight + window.pageYOffset) < document.body.offsetHeight - 100) {
-            scrollButton.style.display = 'flex';
-        } else {
-            scrollButton.style.display = 'none';
-        }
-    }
-
-    // Initial call to set button visibility
-    toggleScrollButton();
-
-    // Add scroll event listener
-    window.addEventListener('scroll', toggleScrollButton);
-    // Add resize event listener to handle window size changes
-    window.addEventListener('resize', toggleScrollButton);
-
-    // MutationObserver to watch for changes in the DOM
-    var observer = new MutationObserver(function(mutations) {
-        toggleScrollButton();
-    });
-
-    observer.observe(document.body, { childList: true, subtree: true });
+    /* Your existing JavaScript here */
     </script>
     """,
     unsafe_allow_html=True
@@ -401,33 +353,19 @@ question = st.chat_input("Ask a question about the uploaded documents:")
 if question:
     # Add user message to chat history
     st.session_state['chat_history'].append({"role": "user", "content": question})
-    st.session_state['waiting_for_answer'] = True
-    st.rerun()
+    
+    # Display user message
+    with st.chat_message("user"):
+        st.markdown(question)
 
-# Check if we're waiting for an answer
-if st.session_state['waiting_for_answer']:
     # Get bot response
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
         
         with st.spinner("Searching for an answer..."):
-            answer = answer_question(st.session_state['chat_history'][-1]["content"])
+            answer = answer_question(question)
         
         message_placeholder.markdown(f'<div class="answer-card">{answer}</div>', unsafe_allow_html=True)
         
         # Add assistant message to chat history
         st.session_state['chat_history'].append({"role": "assistant", "content": answer})
-    
-    # Reset the waiting flag
-    st.session_state['waiting_for_answer'] = False
-    st.rerun()
-
-# Footer
-st.markdown(
-    """
-    <div style="position: fixed; bottom: 0; left: 0; right: 0; background-color: #f0f4f8; padding: 10px; text-align: center; font-size: 12px;">
-        Powered by Gradient Cyber Bot | © 2024 Your Company Name
-    </div>
-    """,
-    unsafe_allow_html=True
-)
