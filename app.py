@@ -2,17 +2,16 @@ import streamlit as st
 from pinecone import Pinecone
 from PyPDF2 import PdfReader
 from openai import OpenAI
+from langchain.callbacks import LangChainTracer
 import io
 import time
 import os
 
+# LangSmith setup
 os.environ["LANGCHAIN_TRACING_V2"] = "true"
 os.environ["LANGCHAIN_ENDPOINT"] = "https://api.smith.langchain.com"
 os.environ["LANGCHAIN_PROJECT"] = "gradient_cyber_bot"
-
-# Securely set the API key from Streamlit secrets
 os.environ["LANGCHAIN_API_KEY"] = st.secrets["LANGCHAIN_API_KEY"]
-
 
 # Set page configuration
 st.set_page_config(layout="wide", page_title="Gradient Cyber Bot", page_icon="🤖")
@@ -159,7 +158,7 @@ if 'waiting_for_answer' not in st.session_state:
 # Streamlit app title
 st.title("🤖 Gradient Cyber Bot")
 
-# Initialize Pinecone and OpenAI with hardcoded values
+# Initialize Pinecone and OpenAI
 PINECONE_API_KEY = st.secrets["PINECONE_API_KEY"]
 OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
 INDEX_NAME = "gradientcyber"
@@ -174,6 +173,9 @@ try:
 except Exception as e:
     st.sidebar.error(f"Error connecting to index: {str(e)}")
     st.stop()
+
+# Initialize LangSmith tracer
+tracer = LangChainTracer(project_name="gradient_cyber_bot")
 
 def extract_text_from_pdf(pdf_file):
     pdf_reader = PdfReader(pdf_file)
@@ -225,20 +227,25 @@ def upsert_to_pinecone(chunks, pdf_name):
         time.sleep(1)
     return True
 
+def get_embedding(text):
+    response = openai_client.embeddings.create(
+        model="text-embedding-ada-002",
+        input=[text]
+    )
+    return response.data[0].embedding
+
+def retrieve_relevant_chunks(question, top_k=5):
+    question_embedding = get_embedding(question)
+    results = index.query(vector=question_embedding, top_k=top_k, include_metadata=True)
+    return [match.metadata['text'] for match in results.matches]
+
 def answer_question(question):
     try:
-        # Get the embedding for the question
-        response = openai_client.embeddings.create(
-            model="text-embedding-ada-002",
-            input=[question]
-        )
-        question_embedding = response.data[0].embedding
-
-        # Query Pinecone
-        query_results = index.query(vector=question_embedding, top_k=30, include_metadata=True)
+        # Retrieve relevant chunks
+        relevant_chunks = retrieve_relevant_chunks(question)
         
-        # Extract text from retrieved documents
-        context = "\n".join([match.metadata['text'] for match in query_results.matches])
+        # Combine chunks into context
+        context = "\n".join(relevant_chunks)
         
         # Prepare the prompt for the LLM
         prompt = f"""
@@ -262,8 +269,19 @@ def answer_question(question):
         answer = response.choices[0].message.content
         
         # Format the answer with sources
-        sources = list(set([match.metadata.get('source', 'Unknown') for match in query_results.matches]))
+        sources = list(set([chunk[:50] + "..." for chunk in relevant_chunks]))
         formatted_answer = format_answer(answer, sources)
+        
+        # Log to LangSmith
+        tracer.log_langchain_event(
+            event_type="llm",
+            event_data={
+                "input": prompt,
+                "output": answer,
+                "model": "gpt-4o",
+                "metadata": {"sources": sources}
+            }
+        )
         
         return formatted_answer
     except Exception as e:
@@ -400,3 +418,13 @@ if st.session_state['waiting_for_answer']:
     # Reset the waiting flag
     st.session_state['waiting_for_answer'] = False
     st.rerun()
+
+# Footer
+st.markdown(
+    """
+    <div style="position: fixed; bottom: 0; left: 0; right: 0; background-color: #f0f4f8; padding: 10px; text-align: center; font-size: 12px;">
+        Powered by Gradient Cyber Bot | © 2024 Your Company Name
+    </div>
+    """,
+    unsafe_allow_html=True
+)
