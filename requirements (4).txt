@@ -1,0 +1,9 @@
+streamlit
+langchain
+openai
+faiss-cpu
+python-dotenv
+typing-extensions
+requests
+langchain_community
+langchain-openai
