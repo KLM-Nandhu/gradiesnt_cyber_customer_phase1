@@ -1,6 +1,6 @@
 import streamlit as st
 from langchain.callbacks import get_openai_callback
-from langchain.chat_models import ChatOpenAI
+from langchain_openai import ChatOpenAI  # Updated import
 from langchain.chains import LLMChain
 from langchain.prompts.chat import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate
 import re
@@ -21,10 +21,11 @@ class SecurityAdvisor:
         if not self.openai_api_key:
             raise ValueError("OpenAI API key not found. Please set the OPENAI_API_KEY in your .env file.")
         
+        # Updated ChatOpenAI initialization
         self.llm = ChatOpenAI(
-            model_name="gpt-4o-mini",
+            model_name="gpt-4",  # Using gpt-4 instead of gpt-4o-mini
             temperature=0.1,
-            openai_api_key=self.openai_api_key
+            api_key=self.openai_api_key  # Updated parameter name
         )
     
     def process_query(self, query: str):
