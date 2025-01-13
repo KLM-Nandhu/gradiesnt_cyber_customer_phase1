@@ -79,7 +79,7 @@ def main():
             sitrep = st.text_area("Situation Report (Sitrep)", height=350)
         
         with col2:
-            query = st.text_area("Query", 
+            query = st.text_area("Client Query", 
                                 placeholder="Example:\nRyan O'Neill, Mon, 06 Jan 2025 20:35:46 GMT\nWhat does this alert mean?",
                                 height=200)
         
