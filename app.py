@@ -23,9 +23,9 @@ class SecurityAdvisor:
         
         # Updated ChatOpenAI initialization
         self.llm = ChatOpenAI(
-            model_name="gpt-4",  # Using gpt-4 instead of gpt-4o-mini
+            model_name="gpt-4o-mini",  
             temperature=0.1,
-            api_key=self.openai_api_key  # Updated parameter name
+            api_key=self.openai_api_key  
         )
     
     def process_query(self, query: str):
@@ -76,7 +76,7 @@ def main():
         col1, col2 = st.columns([2, 1])
         
         with col1:
-            sitrep = st.text_area("Situation Report (Sitrep)", height=450)
+            sitrep = st.text_area("Situation Report (Sitrep)", height=350)
         
         with col2:
             query = st.text_area("Query", 
