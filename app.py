@@ -68,7 +68,7 @@ class SecurityAdvisor:
 
 def main():
     st.set_page_config(page_title="Security Advisor", layout="wide")
-    st.title("Security Advisory System")
+    st.title("SITREP Automation Bot")
     
     try:
         advisor = SecurityAdvisor()
