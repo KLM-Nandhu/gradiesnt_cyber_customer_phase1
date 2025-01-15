@@ -1,8 +1,7 @@
 import streamlit as st
-from langchain.callbacks import get_openai_callback
-from langchain.chat_models import ChatOpenAI
-from langchain.chains import LLMChain
-from langchain.prompts.chat import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate
+from langchain_core.output_parsers import StrOutputParser
 import re
 import logging
 import pandas as pd
@@ -33,6 +32,7 @@ class SecurityAdvisor:
             openai_api_key=self.openai_api_key
         )
         self.engine = create_engine(self.db_connection)
+        self.output_parser = StrOutputParser()
 
     def upload_excel_to_db(self, excel_file):
         """Upload Excel file data to Neon database"""
@@ -66,16 +66,14 @@ class SecurityAdvisor:
     def get_organization_summary(self, org_data: str) -> str:
         """Generate a brief summary of organization using LLM"""
         try:
-            summary_prompt = ChatPromptTemplate.from_messages([
-                SystemMessagePromptTemplate.from_template(
-                    """Given the following organization information, provide a brief 1-2 line summary focusing on their security profile and services:
+            prompt = ChatPromptTemplate.from_messages([
+                ("system", """Given the following organization information, provide a brief 1-2 line summary focusing on their security profile and services:
                     {org_info}
-                    Keep it concise and professional, focusing only on key security aspects."""
-                )
+                    Keep it concise and professional, focusing only on key security aspects.""")
             ])
             
-            chain = LLMChain(llm=self.llm, prompt=summary_prompt)
-            return chain.run(org_info=org_data)
+            chain = prompt | self.llm | self.output_parser
+            return chain.invoke({"org_info": org_data})
         except Exception as e:
             logger.error(f"Summary Error: {str(e)}")
             return None
@@ -121,34 +119,34 @@ class SecurityAdvisor:
 
     def generate_response(self, sitrep: str, query: str, org_info: str = None):
         """Generate response based on sitrep analysis and organization info"""
-        name, cleaned_query = self.process_query(query)
-        greeting = f"Hey {name}" if name else "Hey"
-        
-        if not cleaned_query or cleaned_query.lower().startswith(('thank', 'ok', 'got it')):
-            return f"{greeting}, thank you for your message. - Gradient Cyber Team!"
+        try:
+            name, cleaned_query = self.process_query(query)
+            greeting = f"Hey {name}" if name else "Hey"
+            
+            if not cleaned_query or cleaned_query.lower().startswith(('thank', 'ok', 'got it')):
+                return f"{greeting}, thank you for your message. - Gradient Cyber Team!"
 
-        # Include organization info in the system message if available
-        org_context = f"\nOrganization Context: {org_info}" if org_info else ""
-        
-        chat_prompt = ChatPromptTemplate.from_messages([
-            SystemMessagePromptTemplate.from_template(
-                f"""You are an experienced cyber security analyst handling the role from a Security operations center perspective. 
+            # Include organization info in the system message if available
+            org_context = f"\nOrganization Context: {org_info}" if org_info else ""
+            
+            prompt = ChatPromptTemplate.from_messages([
+                ("system", f"""You are an experienced cyber security analyst handling the role from a Security operations center perspective. 
                 {org_context}
                 When I provide a message, it contains the summary of a "sitrep" which is a situational report of a particular 
                 security incident or event. The goal is to first analyze this sitrep. It will be followed always with a 
                 "query" from a user. Your goal will be to understand the sitrep and then focus on answering the query based 
                 on your role as an experience cyber security analyst. The concept is to ensure that the response is brief as it 
                 primarily is provided as part of a web interface or email.
-                Always start with "{{greeting}}" and end with "We hope this answers your question. Thank you! Gradient Cyber Team!"
-                """
-            ),
-            HumanMessagePromptTemplate.from_template(
-                """Sitrep: {sitrep}
-                Query: {query}"""
-            )
-        ])
-        chain = LLMChain(llm=self.llm, prompt=chat_prompt)
-        return chain.run(greeting=greeting, sitrep=sitrep, query=cleaned_query)
+                Always start with "{greeting}" and end with "We hope this answers your question. Thank you! Gradient Cyber Team!""
+                """),
+                ("human", "Sitrep: {sitrep}\nQuery: {query}")
+            ])
+            
+            chain = prompt | self.llm | self.output_parser
+            return chain.invoke({"sitrep": sitrep, "query": cleaned_query})
+        except Exception as e:
+            logger.error(f"Response Error: {str(e)}")
+            return f"Error generating response: {str(e)}"
 
 def main():
     st.set_page_config(page_title="Security Advisor", layout="wide")
@@ -198,10 +196,9 @@ def main():
             
             # Generate and show response
             with st.spinner("Generating response..."):
-                with get_openai_callback() as cb:
-                    response = advisor.generate_response(sitrep, query, org_summary)
-                    st.markdown("### Response:")
-                    st.markdown(response)
+                response = advisor.generate_response(sitrep, query, org_summary)
+                st.markdown("### Response:")
+                st.markdown(response)
     
     with tab2:
         st.header("Upload Excel Data")
